@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BIGOFFS智能推广平台 (AIPP) - 演示</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            color: white;
+            margin-bottom: 40px;
+        }
+
+        h1 {
+            font-size: 3em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .subtitle {
+            font-size: 1.2em;
+            opacity: 0.9;
+        }
+
+        .value-prop {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .value-prop h2 {
+            color: #667eea;
+            margin-bottom: 15px;
+            font-size: 1.8em;
+        }
+
+        .value-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .value-item {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            transition: transform 0.3s;
+        }
+
+        .value-item:hover {
+            transform: translateY(-5px);
+        }
+
+        .value-item .icon {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .modules {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 25px;
+        }
+
+        .module-card {
+            background: white;
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .module-card:hover {
+            transform: translateY(-10px);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.3);
+        }
+
+        .module-card.active {
+            border: 3px solid #667eea;
+        }
+
+        .module-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .module-icon {
+            font-size: 2.5em;
+            margin-right: 15px;
+        }
+
+        .module-title {
+            font-size: 1.5em;
+            color: #333;
+        }
+
+        .module-desc {
+            color: #666;
+            margin-bottom: 15px;
+            line-height: 1.6;
+        }
+
+        .pain-points {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 15px;
+            margin-bottom: 15px;
+            border-radius: 5px;
+        }
+
+        .pain-points h4 {
+            color: #856404;
+            margin-bottom: 10px;
+        }
+
+        .pain-points ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .pain-points li:before {
+            content: "❌ ";
+            color: #dc3545;
+        }
+
+        .solutions {
+            background: #d4edda;
+            border-left: 4px solid #28a745;
+            padding: 15px;
+            border-radius: 5px;
+        }
+
+        .solutions h4 {
+            color: #155724;
+            margin-bottom: 10px;
+        }
+
+        .solutions ul {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .solutions li:before {
+            content: "✅ ";
+            color: #28a745;
+        }
+
+        .demo-section {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            margin-top: 30px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+        }
+
+        .demo-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+        }
+
+        .workflow {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 20px;
+        }
+
+        .workflow-step {
+            flex: 1;
+            min-width: 150px;
+            text-align: center;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            position: relative;
+        }
+
+        .workflow-step:not(:last-child):after {
+            content: "→";
+            position: absolute;
+            right: -25px;
+            top: 50%;
+            transform: translateY(-50%);
+            font-size: 2em;
+            color: #667eea;
+        }
+
+        .workflow-step .step-number {
+            background: #667eea;
+            color: white;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 10px;
+            font-weight: bold;
+        }
+
+        .cta {
+            text-align: center;
+            margin-top: 40px;
+        }
+
+        .cta-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 15px 40px;
+            border: none;
+            border-radius: 50px;
+            font-size: 1.2em;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+        }
+
+        .cta-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.3);
+        }
+
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2em;
+            }
+
+            .modules {
+                grid-template-columns: 1fr;
+            }
+
+            .workflow-step:not(:last-child):after {
+                content: "↓";
+                right: auto;
+                top: auto;
+                bottom: -25px;
+                left: 50%;
+                transform: translateX(-50%);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🚀 BIGOFFS智能推广平台</h1>
+            <p class="subtitle">AI驱动的全链路营销自动化解决方案</p>
+        </header>
+
+        <div class="value-prop">
+            <h2>核心价值</h2>
+            <p style="color: #666; margin-bottom: 20px;">通过AI技术重塑营销推广流程，让营销更智能、更高效、更精准</p>
+            <div class="value-list">
+                <div class="value-item">
+                    <div class="icon">⚡</div>
+                    <h3>效率提升10倍</h3>
+                    <p>自动化内容生成与投放</p>
+                </div>
+                <div class="value-item">
+                    <div class="icon">💰</div>
+                    <h3>成本降低70%</h3>
+                    <p>减少人工操作与试错成本</p>
+                </div>
+                <div class="value-item">
+                    <div class="icon">🎯</div>
+                    <h3>转化率提升3倍</h3>
+                    <p>精准投放与智能优化</p>
+                </div>
+                <div class="value-item">
+                    <div class="icon">📊</div>
+                    <h3>数据驱动决策</h3>
+                    <p>实时分析与智能建议</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="modules">
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">🤖</div>
+                    <div class="module-title">AI内容生成引擎</div>
+                </div>
+                <div class="module-desc">
+                    基于大语言模型的智能内容创作系统，支持多平台、多格式内容自动生成
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>内容创作耗时长，效率低</li>
+                        <li>多平台内容风格难统一</li>
+                        <li>缺乏创意灵感和素材</li>
+                        <li>A/B测试版本制作繁琐</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>秒级生成高质量营销文案</li>
+                        <li>自动适配不同平台风格</li>
+                        <li>AI提供创意建议和优化</li>
+                        <li>一键生成多个测试版本</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">🎨</div>
+                    <div class="module-title">智能素材管理</div>
+                </div>
+                <div class="module-desc">
+                    AI驱动的素材库管理系统，支持智能标签、自动分类和快速检索
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>素材散落各处难以管理</li>
+                        <li>查找素材浪费大量时间</li>
+                        <li>素材版权和使用权不清晰</li>
+                        <li>团队协作素材共享困难</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>集中管理所有营销素材</li>
+                        <li>AI自动标签，秒级检索</li>
+                        <li>版权信息自动追踪</li>
+                        <li>团队实时协作共享</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">📱</div>
+                    <div class="module-title">多渠道投放中心</div>
+                </div>
+                <div class="module-desc">
+                    统一管理多个推广渠道，支持一键分发和自动化投放策略
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>多平台账号切换繁琐</li>
+                        <li>手动投放容易出错</li>
+                        <li>投放时机难以把握</li>
+                        <li>跨平台数据难以对比</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>一个平台管理所有渠道</li>
+                        <li>自动化投放零失误</li>
+                        <li>AI推荐最佳投放时间</li>
+                        <li>统一视图对比所有数据</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">📊</div>
+                    <div class="module-title">智能数据分析</div>
+                </div>
+                <div class="module-desc">
+                    实时数据监控与AI驱动的洞察分析，提供可执行的优化建议
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>数据分散难以整合</li>
+                        <li>看不懂复杂的数据报表</li>
+                        <li>不知道如何优化策略</li>
+                        <li>缺乏预测和预警机制</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>自动整合所有渠道数据</li>
+                        <li>AI解读数据并生成报告</li>
+                        <li>智能推荐优化方案</li>
+                        <li>异常自动预警和建议</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">🎯</div>
+                    <div class="module-title">精准受众定向</div>
+                </div>
+                <div class="module-desc">
+                    基于AI的用户画像分析和智能人群包生成系统
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>目标受众定位不精准</li>
+                        <li>人群包创建复杂耗时</li>
+                        <li>难以发现潜在客户群</li>
+                        <li>受众重叠浪费预算</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>AI自动分析用户画像</li>
+                        <li>一键生成精准人群包</li>
+                        <li>智能推荐相似受众</li>
+                        <li>自动去重优化预算</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="module-card" onclick="toggleCard(this)">
+                <div class="module-header">
+                    <div class="module-icon">⚙️</div>
+                    <div class="module-title">自动化工作流</div>
+                </div>
+                <div class="module-desc">
+                    可视化流程编排，实现营销活动全流程自动化执行
+                </div>
+                <div class="pain-points">
+                    <h4>解决的痛点</h4>
+                    <ul>
+                        <li>重复性工作占用大量时间</li>
+                        <li>人工操作容易遗漏步骤</li>
+                        <li>跨部门协作效率低</li>
+                        <li>无法7x24小时监控执行</li>
+                    </ul>
+                </div>
+                <div class="solutions">
+                    <h4>带来的改变</h4>
+                    <ul>
+                        <li>自动执行重复性任务</li>
+                        <li>流程标准化零遗漏</li>
+                        <li>自动触发跨部门协作</li>
+                        <li>全天候自动化运行</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>典型工作流程</h2>
+            <div class="workflow">
+                <div class="workflow-step">
+                    <div class="step-number">1</div>
+                    <h4>创建活动</h4>
+                    <p>设定目标和预算</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">2</div>
+                    <h4>AI生成内容</h4>
+                    <p>自动创作多版本素材</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">3</div>
+                    <h4>智能投放</h4>
+                    <p>多渠道自动分发</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">4</div>
+                    <h4>实时优化</h4>
+                    <p>AI监控并自动调整</p>
+                </div>
+                <div class="workflow-step">
+                    <div class="step-number">5</div>
+                    <h4>效果分析</h4>
+                    <p>生成洞察报告</p>
+                </div>
+            </div>
+        </div>
+
+        <div class="demo-section">
+            <h2>对比传统工作流</h2>
+            <table style="width: 100%; border-collapse: collapse; margin-top: 20px;">
+                <thead>
+                    <tr style="background: #667eea; color: white;">
+                        <th style="padding: 15px; text-align: left;">工作环节</th>
+                        <th style="padding: 15px; text-align: left;">传统方式</th>
+                        <th style="padding: 15px; text-align: left;">AIPP方式</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;"><strong>内容创作</strong></td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;">2-3天人工撰写</td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6; color: #28a745;"><strong>5分钟AI生成</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;"><strong>素材管理</strong></td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;">手动整理，查找困难</td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6; color: #28a745;"><strong>AI自动分类，秒级检索</strong></td>
+                    </tr>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;"><strong>多渠道投放</strong></td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;">逐个平台手动操作</td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6; color: #28a745;"><strong>一键分发所有渠道</strong></td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;"><strong>数据分析</strong></td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6;">手动导出整合，周报月报</td>
+                        <td style="padding: 15px; border-bottom: 1px solid #dee2e6; color: #28a745;"><strong>实时监控，自动生成报告</strong></td>
+                    </tr>
+                    <tr style="background: #f8f9fa;">
+                        <td style="padding: 15px;"><strong>优化调整</strong></td>
+                        <td style="padding: 15px;">凭经验手动调整</td>
+                        <td style="padding: 15px; color: #28a745;"><strong>AI智能推荐并自动优化</strong></td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+
+        <div class="cta">
+            <button class="cta-button" onclick="alert('感谢您的关注！\n\n联系方式：\n📧 Email: contact@bigoffs.com\n📱 电话: 400-XXX-XXXX\n🌐 官网: www.bigoffs.com')">
+                立即体验 AIPP 平台
+            </button>
+            <p style="color: white; margin-top: 20px; opacity: 0.9;">
+                让AI成为您的营销助手，开启智能推广新时代
+            </p>
+        </div>
+    </div>
+
+    <script>
+        function toggleCard(card) {
+            card.classList.toggle('active');
+        }
+
+        // 添加滚动动画
+        const observerOptions = {
+            threshold: 0.1,
+            rootMargin: '0px 0px -50px 0px'
+        };
+
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = '0';
+                    entry.target.style.transform = 'translateY(20px)';
+                    setTimeout(() => {
+                        entry.target.style.transition = 'all 0.6s ease-out';
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }, 100);
+                }
+            });
+        }, observerOptions);
+
+        document.querySelectorAll('.module-card, .demo-section').forEach(el => {
+            observer.observe(el);
+        });
+    </script>
+</body>
+</html>
