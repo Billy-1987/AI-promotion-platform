@@ -22,60 +22,23 @@ export function useTryOn() {
 
   const uploadClothing = useCallback(async (file: File) => {
     const previewUrl = URL.createObjectURL(file)
-    setState(prev => ({
-      ...prev,
-      status: 'processing',
-      clothingFile: file,
-      clothingPreviewUrl: previewUrl,
-      analysis: null,
-      resultUrl: null,
-      tryOnResult: null,
-    }))
-
-    // Generate immediately with default style, API will analyze in parallel
     const defaultStyle: StyleTag = 'womenswear'
     const defaultCategory: 'clothing' | 'shoes' = 'clothing'
     const backgrounds = suggestBackgrounds(defaultStyle, defaultCategory)
     setSuggestedBackgrounds(backgrounds)
 
+    // 上传后直接进入 ready，不自动分析，等用户选好风格和场景后再生成
     setState(prev => ({
       ...prev,
+      status: 'ready',
+      clothingFile: file,
+      clothingPreviewUrl: previewUrl,
+      analysis: null,
+      resultUrl: null,
+      tryOnResult: null,
       detectedStyle: defaultStyle,
       selectedBackground: backgrounds[0],
     }))
-
-    try {
-      const result: TryOnResult = await generateTryOn(file, backgrounds[0], null, null, undefined)
-
-      // Extract analyzed style/category from result
-      const analyzedStyle = (result as any).analyzeData?.style ?? defaultStyle
-      const analyzedCategory = (result as any).analyzeData?.productCategory ?? defaultCategory
-
-      // Update backgrounds if style changed
-      if (analyzedStyle !== defaultStyle || analyzedCategory !== defaultCategory) {
-        const newBackgrounds = suggestBackgrounds(analyzedStyle, analyzedCategory)
-        setSuggestedBackgrounds(newBackgrounds)
-      }
-
-      setState(prev => ({
-        ...prev,
-        status: 'result',
-        resultUrl: result.previewUrl,
-        tryOnResult: result,
-        detectedStyle: analyzedStyle,
-        analysis: (result as any).analyzeData ? {
-          style: analyzedStyle,
-          productCategory: analyzedCategory,
-          colors: (result as any).analyzeData.colors ?? [],
-          category: '',
-          keywords: (result as any).analyzeData.keywords ?? [],
-          backgroundSuggestion: '',
-          productDescription: result.description ?? '',
-        } : null,
-      }))
-    } catch {
-      setState(prev => ({ ...prev, status: 'ready' }))
-    }
   }, [])
 
   const selectBackground = useCallback((backgroundId: string) => {

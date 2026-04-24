@@ -25,8 +25,8 @@ export default function UploadPanel({ previewUrl, detectedStyle, detecting, isSh
   return (
     <div className="flex flex-col h-full">
       <div className="mb-3">
-        <h2 className="text-xl font-semibold text-white">AI 换装</h2>
-        <p className="text-xs text-zinc-500 mt-1">
+        <h2 className="text-xl font-semibold text-slate-800">AI 换装</h2>
+        <p className="text-xs text-slate-500 mt-1">
           {isShoes
             ? '上传鞋子图，AI 自动生成场景展示效果'
             : '上传商品图，AI 自动生成虚拟模特上身效果'}
@@ -37,21 +37,21 @@ export default function UploadPanel({ previewUrl, detectedStyle, detecting, isSh
         onDrop={handleDrop}
         onDragOver={e => e.preventDefault()}
         onClick={() => inputRef.current?.click()}
-        className="h-72 border-2 border-dashed border-zinc-600 hover:border-indigo-400 rounded-xl transition-colors cursor-pointer bg-zinc-800/50 flex items-center justify-center overflow-hidden mb-3"
+        className="h-72 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl transition-colors cursor-pointer bg-slate-50 flex items-center justify-center overflow-hidden mb-3"
       >
         {previewUrl ? (
           <img src={previewUrl} alt="商品图" className="w-full h-full object-contain" />
         ) : (
           <div className="text-center px-6">
             <div className="text-5xl mb-3">{isShoes ? '👟' : '📦'}</div>
-            <p className="text-zinc-200 font-medium mb-2">拖拽商品图到此处</p>
-            <p className="text-zinc-500 text-sm mb-4">或点击选择文件 · JPG / PNG</p>
+            <p className="text-slate-700 font-medium mb-2">拖拽商品图到此处</p>
+            <p className="text-slate-400 text-sm mb-4">或点击选择文件 · JPG / PNG</p>
             <div className="flex flex-wrap justify-center gap-2">
               {(isShoes
                 ? ['运动鞋', '皮鞋 / 靴子', '凉鞋 / 拖鞋']
                 : ['白底商品图', '模特上身图', '实拍场景图']
               ).map(t => (
-                <span key={t} className="px-2.5 py-1 bg-zinc-700/60 text-zinc-400 text-xs rounded-full border border-zinc-600/50">
+                <span key={t} className="px-2.5 py-1 bg-white text-slate-500 text-xs rounded-full border border-slate-200">
                   {t}
                 </span>
               ))}

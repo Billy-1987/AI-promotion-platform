@@ -15,14 +15,14 @@ export default function TryOnStudio() {
   const isShoes = state.analysis?.productCategory === 'shoes'
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-white">
+    <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
       {/* Header */}
-      <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
+      <header className="bigoffs-header px-6 flex items-center justify-between" style={{ height: 60 }}>
         <div className="flex items-center gap-3">
           <Logo />
           <div>
             <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-zinc-400">AI 商品图背景替换</p>
+            <p className="text-xs text-slate-400">AI 商品图背景替换</p>
           </div>
         </div>
 
@@ -30,7 +30,7 @@ export default function TryOnStudio() {
           {state.status !== 'idle' && (
             <button
               onClick={reset}
-              className="text-sm text-zinc-400 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-zinc-800"
+              className="text-sm text-slate-300 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/10"
             >
               重新开始
             </button>
@@ -38,19 +38,19 @@ export default function TryOnStudio() {
 
           {/* User info */}
           {user && (
-            <div className="flex items-center gap-3 pl-4 border-l border-zinc-700">
+            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
               <div className="text-right">
                 <p className="text-sm text-white font-medium">{user.name}</p>
-                <p className="text-xs text-zinc-400">
+                <p className="text-xs text-slate-400">
                   {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold" style={{ background: '#0034cc' }}>
                 {user.name[0]}
               </div>
               <button
                 onClick={logout}
-                className="text-xs text-zinc-500 hover:text-zinc-300 transition-colors px-2 py-1 rounded hover:bg-zinc-800"
+                className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
               >
                 退出
               </button>
@@ -60,7 +60,7 @@ export default function TryOnStudio() {
       </header>
 
       {/* Nav */}
-      <nav className="border-b border-zinc-800 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅' },
           { label: '模板社区', href: '/templates', icon: '🎨' },
@@ -73,9 +73,10 @@ export default function TryOnStudio() {
             href={item.href}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
               item.active
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-white hover:border-zinc-600'
+                ? 'text-white'
+                : 'border-transparent text-slate-400 hover:text-white hover:border-white/30'
             }`}
+            style={item.active ? { borderBottomColor: '#fcea42', color: '#fcea42' } : {}}
           >
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
@@ -86,7 +87,7 @@ export default function TryOnStudio() {
       {/* Main layout */}
       <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-[calc(100vh-65px)]">
         {/* Left: Upload */}
-        <div className="bg-zinc-800/50 rounded-2xl p-6 flex flex-col">
+        <div className="glass-card rounded-2xl p-6 flex flex-col">
           <UploadPanel
             previewUrl={state.clothingPreviewUrl}
             detectedStyle={state.detectedStyle}
@@ -98,7 +99,7 @@ export default function TryOnStudio() {
         </div>
 
         {/* Right: Preview */}
-        <div className="bg-zinc-800/50 rounded-2xl p-6 flex flex-col">
+        <div className="glass-card rounded-2xl p-6 flex flex-col">
           <PreviewPanel
             status={state.status}
             resultUrl={state.resultUrl}

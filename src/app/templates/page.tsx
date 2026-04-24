@@ -91,11 +91,11 @@ const TEMPLATES: TemplateItem[] = [
 ]
 
 const CATEGORY_COLORS: Record<Category, string> = {
-  '全部': 'bg-zinc-600',
+  '全部': 'bg-slate-500',
   '节日': 'bg-rose-600',
   '节气': 'bg-emerald-600',
   '促销': 'bg-amber-600',
-  '通用': 'bg-indigo-600',
+  '通用': 'bg-blue-600',
 }
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
@@ -144,13 +144,13 @@ function TemplateCard({
 
   return (
     <div
-      className="group bg-zinc-800 rounded-xl overflow-hidden border border-zinc-700 hover:border-indigo-500 transition-all cursor-pointer flex flex-col"
+      className="group bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col"
       onClick={() => onClick(item, imageUrl)}
     >
-      <div className="aspect-[3/4] bg-zinc-700 relative overflow-hidden">
+      <div className="aspect-[3/4] bg-slate-100 relative overflow-hidden">
         {loading ? (
-          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-zinc-500">
-            <span className="w-6 h-6 border-2 border-zinc-500 border-t-indigo-400 rounded-full animate-spin" />
+          <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
+            <span className="w-6 h-6 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
             <span className="text-xs">AI 生成中...</span>
           </div>
         ) : imageUrl ? (
@@ -167,7 +167,7 @@ function TemplateCard({
             </div>
           </>
         ) : (
-          <div className="w-full h-full flex flex-col items-center justify-center text-zinc-500 gap-2">
+          <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
             <span className="text-3xl">🎨</span>
             <span className="text-xs">生成失败</span>
           </div>
@@ -177,8 +177,8 @@ function TemplateCard({
         </span>
       </div>
       <div className="p-3">
-        <h3 className="text-sm font-semibold text-white">{item.title}</h3>
-        {item.date && <p className="text-xs text-zinc-500 mt-0.5">{item.date}</p>}
+        <h3 className="text-sm font-semibold text-slate-800">{item.title}</h3>
+        {item.date && <p className="text-xs text-slate-500 mt-0.5">{item.date}</p>}
       </div>
     </div>
   )
@@ -342,28 +342,28 @@ function PreviewModal({
       <canvas ref={canvasRef} className="hidden" />
 
       <div
-        className="bg-zinc-800 rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
+        className="bg-white rounded-2xl w-full max-w-3xl max-h-[92vh] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-700 shrink-0">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
           <div className="flex items-center gap-3">
             <span className={`text-xs px-2 py-0.5 rounded text-white font-medium ${CATEGORY_COLORS[item.category]}`}>
               {item.category}
             </span>
-            <h3 className="text-lg font-bold text-white">{item.title}</h3>
-            {item.date && <span className="text-sm text-zinc-400">{item.date}</span>}
+            <h3 className="text-lg font-bold text-slate-800">{item.title}</h3>
+            {item.date && <span className="text-sm text-slate-500">{item.date}</span>}
           </div>
           <button
             onClick={onClose}
-            className="text-zinc-400 hover:text-white text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-zinc-700"
+            className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100"
           >
             ×
           </button>
         </div>
 
         {/* Main image */}
-        <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-zinc-900/50">
+        <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-slate-50">
           {displaySrc ? (
             <div className="relative">
               <div
@@ -414,7 +414,7 @@ function PreviewModal({
               )}
             </div>
           ) : (
-            <div className="text-zinc-500 text-center">
+            <div className="text-slate-500 text-center">
               <div className="text-5xl mb-3">🎨</div>
               <p>暂无可用图片</p>
             </div>
@@ -422,22 +422,22 @@ function PreviewModal({
         </div>
 
         {/* Footer */}
-        <div className="flex gap-3 px-6 py-4 border-t border-zinc-700 shrink-0">
+        <div className="flex gap-3 px-6 py-4 border-t border-slate-200 shrink-0">
           {!withLogo ? (
             <button
               onClick={handleAddLogo}
               disabled={!imageUrl || compositing}
-              className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shrink-0"
+              className="px-4 py-2.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm disabled:opacity-40 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shrink-0"
             >
               {compositing
-                ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />处理中...</>
+                ? <><span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />处理中...</>
                 : <><img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />一键添加 Logo</>
               }
             </button>
           ) : (
             <button
               onClick={handleRemoveLogo}
-              className="px-4 py-2.5 bg-zinc-600 hover:bg-zinc-500 text-white text-sm font-medium rounded-lg transition-colors shrink-0"
+              className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors shrink-0"
             >
               ✕ 移除 Logo
             </button>
@@ -445,13 +445,14 @@ function PreviewModal({
           <button
             onClick={handleDownload}
             disabled={!imageUrl}
-            className="flex-1 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-sm font-medium rounded-lg transition-colors"
+            className="flex-1 px-4 py-2.5 text-white disabled:opacity-40 text-sm font-medium rounded-lg transition-colors"
+            style={{ background: '#0034cc' }}
           >
             {withLogo ? '下载（含 Logo）' : '下载模板'}
           </button>
           <button
             onClick={onClose}
-            className="px-4 py-2.5 bg-zinc-700 hover:bg-zinc-600 text-white text-sm font-medium rounded-lg transition-colors"
+            className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors"
           >
             关闭
           </button>
@@ -474,13 +475,13 @@ function TemplatesContent() {
   }, [])
 
   return (
-    <div className="min-h-screen bg-zinc-900 text-white">
-      <header className="border-b border-zinc-800 px-6 py-3 flex items-center justify-between">
+    <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
+      <header className="bigoffs-header px-6 flex items-center justify-between" style={{ height: 60 }}>
         <div className="flex items-center gap-3">
           <Logo />
           <div>
             <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-zinc-400">模板社区</p>
+            <p className="text-xs text-slate-400">模板社区</p>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -488,18 +489,18 @@ function TemplatesContent() {
             <div className="flex items-center gap-3">
               <div className="text-right">
                 <p className="text-sm text-white font-medium">{user.name}</p>
-                <p className="text-xs text-zinc-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+                <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
               </div>
-              <div className="w-8 h-8 rounded-full bg-indigo-600 flex items-center justify-center text-sm font-bold">
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>
                 {user.name[0]}
               </div>
-              <button onClick={logout} className="text-xs text-zinc-500 hover:text-zinc-300 px-2 py-1 rounded hover:bg-zinc-800">退出</button>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
           )}
         </div>
       </header>
 
-      <nav className="border-b border-zinc-800 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅' },
           { label: '模板社区', href: '/templates', icon: '🎨', active: true },
@@ -512,9 +513,10 @@ function TemplatesContent() {
             href={item.href}
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
               item.active
-                ? 'border-indigo-500 text-white'
-                : 'border-transparent text-zinc-400 hover:text-white hover:border-zinc-600'
+                ? 'text-white'
+                : 'border-transparent text-slate-400 hover:text-white hover:border-white/30'
             }`}
+            style={item.active ? { borderBottomColor: '#fcea42', color: '#fcea42' } : {}}
           >
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
@@ -525,19 +527,20 @@ function TemplatesContent() {
       <main className="max-w-7xl mx-auto px-6 py-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
           <div>
-            <h2 className="text-2xl font-bold text-white">海报模板</h2>
-            <p className="text-sm text-zinc-400 mt-0.5">
+            <h2 className="text-2xl font-bold text-slate-800">海报模板</h2>
+            <p className="text-sm text-slate-500 mt-0.5">
               共 {filtered.length} 套模板 · 由 AI 按需生成，免费商用
             </p>
           </div>
-          <div className="flex items-center gap-2 bg-zinc-800 rounded-lg p-1 self-start sm:self-auto">
+          <div className="flex items-center gap-2 bg-white border border-slate-200 shadow-sm rounded-lg p-1 self-start sm:self-auto">
             {categories.map(c => (
               <button
                 key={c}
                 onClick={() => setCategory(c)}
                 className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
-                  category === c ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'
+                  category === c ? 'text-white' : 'text-slate-500 hover:text-slate-800'
                 }`}
+                style={category === c ? { background: '#0034cc' } : {}}
               >
                 {c}
               </button>

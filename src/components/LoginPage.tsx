@@ -25,17 +25,43 @@ export default function LoginPage() {
   const regionalAccounts = TEST_ACCOUNTS.filter(a => a.role === 'regional')
 
   return (
-    <div className="min-h-screen bg-zinc-900 flex items-center justify-center px-4">
-      <div className="w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-8 items-center">
+    <div
+      className="min-h-screen flex items-center justify-center px-4"
+      style={{
+        background: 'linear-gradient(135deg, #0a0a1a 0%, #0d1b4b 60%, #0a0a1a 100%)',
+      }}
+    >
+      {/* Background accent blobs */}
+      <div className="pointer-events-none fixed inset-0 overflow-hidden">
+        <div
+          className="absolute -top-32 -left-32 w-96 h-96 rounded-full opacity-20"
+          style={{ background: 'radial-gradient(circle, #0034cc 0%, transparent 70%)' }}
+        />
+        <div
+          className="absolute -bottom-32 -right-32 w-96 h-96 rounded-full opacity-15"
+          style={{ background: 'radial-gradient(circle, #fcea42 0%, transparent 70%)' }}
+        />
+      </div>
+
+      <div className="relative w-full max-w-4xl grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
 
         {/* Left: Branding */}
         <div className="text-center lg:text-left">
-          <div className="text-5xl mb-4"><Logo size="lg" /></div>
+          <div className="mb-5">
+            <Logo size="lg" />
+          </div>
           <h1 className="text-3xl font-bold text-white mb-2">智能推广平台</h1>
-          <p className="text-zinc-400 text-base mb-6">AI 驱动的推广内容生成系统</p>
+          <p className="text-slate-400 text-base mb-8">AI 驱动的推广内容生成系统</p>
           <div className="flex flex-wrap gap-2 justify-center lg:justify-start">
             {['运营日历', '模板社区', 'AI 换装', 'AI 图片设计', '我的图库'].map(f => (
-              <span key={f} className="px-3 py-1 bg-indigo-900/40 text-indigo-300 text-sm rounded-full border border-indigo-800/50">
+              <span
+                key={f}
+                className="px-3 py-1 text-sm rounded-full border text-slate-300"
+                style={{
+                  background: 'rgba(0, 52, 204, 0.15)',
+                  borderColor: 'rgba(0, 52, 204, 0.4)',
+                }}
+              >
                 {f}
               </span>
             ))}
@@ -44,39 +70,60 @@ export default function LoginPage() {
 
         {/* Right: Login form + test accounts */}
         <div className="space-y-4">
-          {/* Login card */}
-          <div className="bg-zinc-800 rounded-2xl p-8 border border-zinc-700">
+          {/* Login card — glassmorphism */}
+          <div
+            className="rounded-2xl p-8 border"
+            style={{
+              background: 'rgba(255, 255, 255, 0.07)',
+              backdropFilter: 'blur(16px)',
+              borderColor: 'rgba(255, 255, 255, 0.12)',
+              boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4)',
+            }}
+          >
             <h2 className="text-xl font-semibold text-white mb-6">登录账号</h2>
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm text-zinc-400 mb-1.5">用户名</label>
+                <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wide">用户名</label>
                 <input
                   type="text"
                   value={username}
                   onChange={e => setUsername(e.target.value)}
                   placeholder="请输入用户名"
                   required
-                  className="w-full px-4 py-2.5 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full px-4 py-2.5 rounded-lg text-white placeholder-slate-500 focus:outline-none transition-colors"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                  }}
+                  onFocus={e => (e.currentTarget.style.borderColor = '#0034cc')}
+                  onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)')}
                 />
               </div>
               <div>
-                <label className="block text-sm text-zinc-400 mb-1.5">密码</label>
+                <label className="block text-xs text-slate-400 mb-1.5 uppercase tracking-wide">密码</label>
                 <input
                   type="password"
                   value={password}
                   onChange={e => setPassword(e.target.value)}
                   placeholder="请输入密码"
                   required
-                  className="w-full px-4 py-2.5 bg-zinc-700 border border-zinc-600 rounded-lg text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                  className="w-full px-4 py-2.5 rounded-lg text-white placeholder-slate-500 focus:outline-none transition-colors"
+                  style={{
+                    background: 'rgba(255, 255, 255, 0.08)',
+                    border: '1px solid rgba(255, 255, 255, 0.15)',
+                  }}
+                  onFocus={e => (e.currentTarget.style.borderColor = '#0034cc')}
+                  onBlur={e => (e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.15)')}
                 />
               </div>
-              {error && (
-                <p className="text-red-400 text-sm">{error}</p>
-              )}
+              {error && <p className="text-red-400 text-sm">{error}</p>}
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white font-semibold rounded-lg transition-colors"
+                className="w-full py-3 font-semibold rounded-lg transition-all disabled:opacity-50 text-white"
+                style={{ background: '#0034cc' }}
+                onMouseEnter={e => { if (!loading) e.currentTarget.style.boxShadow = '0 0 20px rgba(0, 52, 204, 0.5)' }}
+                onMouseLeave={e => { e.currentTarget.style.boxShadow = 'none' }}
               >
                 {loading ? '登录中...' : '登录'}
               </button>
@@ -84,35 +131,51 @@ export default function LoginPage() {
           </div>
 
           {/* Test accounts */}
-          <div className="bg-zinc-800/60 rounded-2xl p-5 border border-zinc-700/50">
-            <p className="text-xs text-zinc-500 mb-3 flex items-center gap-1.5">
-              <span className="w-1.5 h-1.5 bg-amber-400 rounded-full inline-block"></span>
+          <div
+            className="rounded-2xl p-5 border"
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              backdropFilter: 'blur(12px)',
+              borderColor: 'rgba(255, 255, 255, 0.08)',
+            }}
+          >
+            <p className="text-xs text-slate-500 mb-3 flex items-center gap-1.5">
+              <span
+                className="w-1.5 h-1.5 rounded-full inline-block"
+                style={{ backgroundColor: '#fcea42', boxShadow: '0 0 6px rgba(252, 234, 66, 0.5)' }}
+              />
               测试账号（点击自动填入）
             </p>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <p className="text-xs text-zinc-500 mb-2">总部市场部</p>
+                <p className="text-xs text-slate-500 mb-2">总部市场部</p>
                 {hqAccounts.map(a => (
                   <button
                     key={a.username}
                     onClick={() => { setUsername(a.username); setPassword(a.password); setError('') }}
-                    className="w-full text-left px-3 py-2 rounded-lg bg-zinc-700/50 hover:bg-zinc-700 transition-colors mb-1.5"
+                    className="w-full text-left px-3 py-2 rounded-lg transition-colors mb-1.5"
+                    style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0, 52, 204, 0.2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
                   >
                     <p className="text-sm text-white">{a.name}</p>
-                    <p className="text-xs text-zinc-400">{a.username} / {a.password}</p>
+                    <p className="text-xs text-slate-400">{a.username} / {a.password}</p>
                   </button>
                 ))}
               </div>
               <div>
-                <p className="text-xs text-zinc-500 mb-2">区域运营</p>
+                <p className="text-xs text-slate-500 mb-2">区域运营</p>
                 {regionalAccounts.map(a => (
                   <button
                     key={a.username}
                     onClick={() => { setUsername(a.username); setPassword(a.password); setError('') }}
-                    className="w-full text-left px-3 py-2 rounded-lg bg-zinc-700/50 hover:bg-zinc-700 transition-colors mb-1.5"
+                    className="w-full text-left px-3 py-2 rounded-lg transition-colors mb-1.5"
+                    style={{ background: 'rgba(255, 255, 255, 0.06)', border: '1px solid rgba(255,255,255,0.08)' }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(0, 52, 204, 0.2)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'rgba(255, 255, 255, 0.06)')}
                   >
-                    <p className="text-sm text-white">{a.name} <span className="text-zinc-500 text-xs">{a.region}</span></p>
-                    <p className="text-xs text-zinc-400">{a.username} / {a.password}</p>
+                    <p className="text-sm text-white">{a.name} <span className="text-slate-500 text-xs">{a.region}</span></p>
+                    <p className="text-xs text-slate-400">{a.username} / {a.password}</p>
                   </button>
                 ))}
               </div>
