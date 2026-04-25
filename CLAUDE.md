@@ -84,3 +84,46 @@ Three independent LLM calls run **in parallel** via `Promise.allSettled` / `Prom
 - 现有硬编码账号登录保留作为测试备用
 
 未来 Claude 会话在本项目工作时，无需重新扫描即可知道此集成已存在。
+
+## Deployment
+
+### Server
+
+- Region: Singapore (ap-southeast-1) — Gemini models have region restrictions, Hong Kong is blocked
+- IP: 47.236.90.150
+- Stack: Docker + nginx reverse proxy (port 80 → 3001)
+- Project path: `/opt/apps/i3oy507-aipp/`
+- Domains: `source.aipp.bigoffs.cn` (origin), `aipp.bigoffs.cn` (CDN)
+
+### Environment variables (on server)
+
+Stored in `/opt/apps/i3oy507-aipp/.env`, loaded via `docker run --env-file`. Never commit to repo.
+
+```
+OPENROUTER_API_KEY=<key>
+BIGOFFS_CLIENT_ID=<id>
+BIGOFFS_CLIENT_SECRET=<secret>
+```
+
+### Deploy
+
+```bash
+bash deploy.sh
+```
+
+The script packs source files (excluding `node_modules`, `.next`, `.git`, `data/`, `.env*`), uploads to server, rebuilds Docker image, and restarts the container. `data/` and `generated/` are mounted as volumes and preserved across deploys.
+
+### Prerequisites for a new deployer
+
+1. SSH public key added to `deployer@47.236.90.150:~/.ssh/authorized_keys`
+2. That's it — `deploy.sh` handles the rest
+
+### Manual operations on server
+
+```bash
+ssh deployer@47.236.90.150
+docker logs aipp                    # view logs
+docker exec aipp printenv           # check env vars
+cat /opt/apps/i3oy507-aipp/.env     # view secrets
+docker restart aipp                 # restart without rebuild
+```
