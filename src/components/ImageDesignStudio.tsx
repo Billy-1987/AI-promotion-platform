@@ -144,10 +144,25 @@ export default function ImageDesignStudio() {
     const reader = new FileReader()
     reader.onload = e => {
       const dataUrl = e.target?.result as string
-      setRefImagePreview(dataUrl)
-      const base64 = dataUrl.split(',')[1]
-      setRefImageBase64(base64)
-      setRefImageMime(file.type || 'image/jpeg')
+      // 压缩到最大边 1024px，避免 payload 过大
+      const img = new window.Image()
+      img.onload = () => {
+        const MAX = 1024
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+          else { width = Math.round(width * MAX / height); height = MAX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+        const compressed = canvas.toDataURL('image/jpeg', 0.85)
+        setRefImagePreview(compressed)
+        setRefImageBase64(compressed.split(',')[1])
+        setRefImageMime('image/jpeg')
+      }
+      img.src = dataUrl
     }
     reader.readAsDataURL(file)
   }
@@ -239,7 +254,9 @@ export default function ImageDesignStudio() {
   function loadImg(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = document.createElement('img')
-      img.crossOrigin = 'anonymous'
+      if (src.startsWith('http://') || src.startsWith('https://')) {
+        img.crossOrigin = 'anonymous'
+      }
       img.onload = () => resolve(img)
       img.onerror = reject
       img.src = src
@@ -513,6 +530,24 @@ export default function ImageDesignStudio() {
               rows={4}
               className="w-full bg-white border-2 border-blue-200 rounded-xl px-3 py-2.5 text-sm text-slate-800 placeholder-slate-400 resize-none focus:outline-none focus:border-blue-400 transition-colors"
             />
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {[
+                { label: '🌅 环境光影', hint: '黄金时段阳光、霓虹夜景、柔和室内光' },
+                { label: '👗 穿着动作', hint: '模特全身正面站立、侧身回眸、动感跑步' },
+                { label: '🎨 滤镜构图', hint: '胶片质感、三分构图、浅景深虚化背景' },
+              ].map(d => (
+                <button
+                  key={d.label}
+                  type="button"
+                  title={d.hint}
+                  onClick={() => setPrompt(p => p ? `${p}，${d.hint}` : d.hint)}
+                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-lg transition-colors border border-blue-200"
+                >
+                  {d.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-slate-400 mt-1.5">点击维度标签可快速追加描述词</p>
           </div>
 
           {/* Style */}
@@ -632,6 +667,7 @@ export default function ImageDesignStudio() {
                     aspectRatio: r ? `${r.w}/${r.h}` : '1/1',
                     ...(isPortrait ? { height: '100%', maxHeight: '100%' } : { width: '100%', maxWidth: '100%' }),
                     cursor: withLogo && !draggingTextRef.current ? 'move' : 'default',
+                    containerType: 'inline-size',
                   }
                 })()}
                 onMouseDown={handleMouseDown}
@@ -664,7 +700,8 @@ export default function ImageDesignStudio() {
                     const isLocked = !isPreview && t.locked
                     const isSelected = !isPreview && !isLocked && selectedTextIdx === i
                     const isInlineEditing = !isPreview && !isLocked && inlineEditIdx === i
-                    const fontSizeVw = t.fontSize * 100 * 0.5
+                    // Use % of container width so preview matches canvas download (which uses width * fontSize)
+                    const fontSizePct = t.fontSize * 100
                     return (
                       <div
                         key={isPreview ? 'preview' : i}
@@ -673,7 +710,7 @@ export default function ImageDesignStudio() {
                           left: `${t.x * 100}%`,
                           top: `${t.y * 100}%`,
                           transform: 'translate(-50%, -50%)',
-                          fontSize: `max(14px, ${fontSizeVw}vw)`,
+                          fontSize: `max(12px, ${fontSizePct}cqw)`,
                           color: t.color,
                           fontFamily: t.fontFamily,
                           textShadow: t.color === '#000000'

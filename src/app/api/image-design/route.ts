@@ -1,17 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { openrouter as client } from '@/lib/openrouter'
 
 export const maxDuration = 120
 
-const client = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-})
+type ContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
 
-async function generateImage(prompt: string, aspectRatio: string): Promise<string | null> {
+async function generateImage(parts: ContentPart[], aspectRatio: string): Promise<string | null> {
   const params = {
     model: 'google/gemini-2.5-flash-image',
-    messages: [{ role: 'user' as const, content: prompt }],
+    messages: [{ role: 'user' as const, content: parts }],
     modalities: ['image', 'text'],
     image_config: { aspect_ratio: aspectRatio },
   }
@@ -34,7 +34,7 @@ async function generateImage(prompt: string, aspectRatio: string): Promise<strin
 }
 
 export async function POST(req: NextRequest) {
-  const { prompt, style, ratio, count } = await req.json()
+  const { prompt, style, ratio, count, referenceImageBase64, referenceImageMime } = await req.json()
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
@@ -48,10 +48,21 @@ export async function POST(req: NextRequest) {
     watercolor: 'watercolor painting, soft colors, artistic, flowing paint',
   }
 
-  const fullPrompt = `${prompt}. Style: ${stylePrompts[style] || stylePrompts.realistic}. Fill the entire canvas edge to edge, no blank areas, no borders. Do NOT render any text or typography in the image.`
+  const textPrompt = `${prompt}. Style: ${stylePrompts[style] || stylePrompts.realistic}. Fill the entire canvas edge to edge, no blank areas, no borders. Do NOT render any text or typography in the image.`
+
+  const parts: ContentPart[] = []
+  if (referenceImageBase64) {
+    parts.push({
+      type: 'image_url',
+      image_url: { url: `data:${referenceImageMime ?? 'image/jpeg'};base64,${referenceImageBase64}` },
+    })
+    parts.push({ type: 'text', text: `Use the above image as a reference. ${textPrompt}` })
+  } else {
+    parts.push({ type: 'text', text: textPrompt })
+  }
 
   const results = await Promise.allSettled(
-    Array.from({ length: count }, () => generateImage(fullPrompt, ratio ?? '1:1'))
+    Array.from({ length: count }, () => generateImage(parts, ratio ?? '1:1'))
   )
 
   const images = results

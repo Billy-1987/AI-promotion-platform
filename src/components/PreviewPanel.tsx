@@ -101,7 +101,11 @@ export default function PreviewPanel({
   function loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
       const img = document.createElement('img')
-      img.crossOrigin = 'anonymous'
+      // Only set crossOrigin for external URLs — local paths don't need it
+      // and setting it on same-origin assets can cause CORS failures in some browsers
+      if (src.startsWith('http://') || src.startsWith('https://')) {
+        img.crossOrigin = 'anonymous'
+      }
       img.onload = () => resolve(img)
       img.onerror = reject
       img.src = src
@@ -139,10 +143,20 @@ export default function PreviewPanel({
       posterImgRef.current = poster
       logoImgRef.current = logo
       setSelectedBrand('bigoffs')
+      // Draw immediately with the loaded images, don't rely on state update timing
+      const canvas = canvasRef.current!
+      const ctx = canvas.getContext('2d')!
+      canvas.width = poster.naturalWidth
+      canvas.height = poster.naturalHeight
+      ctx.drawImage(poster, 0, 0)
+      const logoW = poster.naturalWidth * 0.22
+      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
+      ctx.drawImage(logo, poster.naturalWidth * logoPos.x - logoW / 2, poster.naturalHeight * logoPos.y - logoH / 2, logoW, logoH)
+      setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
       setWithLogo(true)
-      setTimeout(() => redrawCanvas(), 0)
     } catch (e) {
       console.error('Logo compositing failed', e)
+      alert('Logo 加载失败，请检查网络后重试')
     } finally {
       setCompositing(false)
     }
@@ -157,10 +171,19 @@ export default function PreviewPanel({
       const [poster, logo] = await Promise.all([loadImage(resultUrl), loadImage(logoUrl)])
       posterImgRef.current = poster
       logoImgRef.current = logo
+      const canvas = canvasRef.current!
+      const ctx = canvas.getContext('2d')!
+      canvas.width = poster.naturalWidth
+      canvas.height = poster.naturalHeight
+      ctx.drawImage(poster, 0, 0)
+      const logoW = poster.naturalWidth * 0.22
+      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
+      ctx.drawImage(logo, poster.naturalWidth * logoPos.x - logoW / 2, poster.naturalHeight * logoPos.y - logoH / 2, logoW, logoH)
+      setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
       setWithLogo(true)
-      setTimeout(() => redrawCanvas(), 0)
     } catch (e) {
       console.error('Logo compositing failed', e)
+      alert('Logo 加载失败，请检查品牌域名是否正确')
     } finally {
       setCompositing(false)
     }

@@ -2,18 +2,39 @@
 
 import { useRef, DragEvent } from 'react'
 import StyleTagSelector from './StyleTagSelector'
-import { StyleTag } from '@/types'
+import { StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
 
 interface Props {
   previewUrl: string | null
   detectedStyle: StyleTag | null
   detecting: boolean
   isShoes: boolean
+  modelGender: ModelGender
+  aspectRatio: TryOnAspectRatio
   onUpload: (file: File) => void
   onStyleSelect: (tag: StyleTag) => void
+  onGenderSelect: (gender: ModelGender) => void
+  onAspectRatioSelect: (ratio: TryOnAspectRatio) => void
 }
 
-export default function UploadPanel({ previewUrl, detectedStyle, detecting, isShoes, onUpload, onStyleSelect }: Props) {
+const GENDER_OPTIONS: { value: ModelGender; label: string; emoji: string }[] = [
+  { value: 'female', label: '成人女', emoji: '👩' },
+  { value: 'male',   label: '成人男', emoji: '👨' },
+  { value: 'kids',   label: '儿童',   emoji: '🧒' },
+]
+
+const RATIO_OPTIONS: { value: TryOnAspectRatio; label: string; w: number; h: number }[] = [
+  { value: '3:4',  label: '3:4',  w: 3, h: 4 },
+  { value: '1:1',  label: '1:1',  w: 1, h: 1 },
+  { value: '4:3',  label: '4:3',  w: 4, h: 3 },
+  { value: '9:16', label: '9:16', w: 9, h: 16 },
+]
+
+export default function UploadPanel({
+  previewUrl, detectedStyle, detecting, isShoes,
+  modelGender, aspectRatio,
+  onUpload, onStyleSelect, onGenderSelect, onAspectRatioSelect,
+}: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
   const handleDrop = (e: DragEvent<HTMLDivElement>) => {
@@ -37,7 +58,7 @@ export default function UploadPanel({ previewUrl, detectedStyle, detecting, isSh
         onDrop={handleDrop}
         onDragOver={e => e.preventDefault()}
         onClick={() => inputRef.current?.click()}
-        className="h-72 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl transition-colors cursor-pointer bg-slate-50 flex items-center justify-center overflow-hidden mb-3"
+        className="h-64 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl transition-colors cursor-pointer bg-slate-50 flex items-center justify-center overflow-hidden mb-3"
       >
         {previewUrl ? (
           <img src={previewUrl} alt="商品图" className="w-full h-full object-contain" />
@@ -68,7 +89,61 @@ export default function UploadPanel({ previewUrl, detectedStyle, detecting, isSh
         className="hidden"
       />
 
-      {/* 鞋子模式下隐藏风格选择器，因为不需要模特风格 */}
+      {/* 性别/年龄选择 — 仅服装模式 */}
+      {!isShoes && (
+        <div className="mb-3">
+          <p className="text-xs text-slate-500 mb-2">模特性别 / 年龄</p>
+          <div className="flex gap-2">
+            {GENDER_OPTIONS.map(g => (
+              <button
+                key={g.value}
+                onClick={() => onGenderSelect(g.value)}
+                className={`flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
+                  modelGender === g.value
+                    ? 'text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+                style={modelGender === g.value ? { background: '#0034cc' } : {}}
+              >
+                <span>{g.emoji}</span>
+                {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 图片比例选择 */}
+      <div className="mb-3">
+        <p className="text-xs text-slate-500 mb-2">输出比例</p>
+        <div className="flex gap-2">
+          {RATIO_OPTIONS.map(r => (
+            <button
+              key={r.value}
+              onClick={() => onAspectRatioSelect(r.value)}
+              className={`flex-1 flex flex-col items-center gap-1 px-2 py-2 rounded-lg text-xs font-medium transition-colors ${
+                aspectRatio === r.value
+                  ? 'text-white'
+                  : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+              }`}
+              style={aspectRatio === r.value ? { background: '#0034cc' } : {}}
+            >
+              <span
+                className="border-2 border-current"
+                style={{
+                  width: `${Math.round(16 * (r.w / Math.max(r.w, r.h)))}px`,
+                  height: `${Math.round(16 * (r.h / Math.max(r.w, r.h)))}px`,
+                  minWidth: '8px',
+                  minHeight: '8px',
+                }}
+              />
+              {r.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* 风格选择 — 仅服装模式 */}
       {!isShoes && (
         <StyleTagSelector selected={detectedStyle} detecting={detecting} onSelect={onStyleSelect} />
       )}

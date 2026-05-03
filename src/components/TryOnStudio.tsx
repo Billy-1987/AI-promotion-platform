@@ -9,7 +9,7 @@ import Logo from './Logo'
 const ROLE_LABEL = { hq: '总部市场部', regional: '区域运营' }
 
 export default function TryOnStudio() {
-  const { state, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, generate, reset } = useTryOn()
+  const { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset } = useTryOn()
   const { user, logout } = useAuth()
 
   const isShoes = state.analysis?.productCategory === 'shoes'
@@ -93,13 +93,23 @@ export default function TryOnStudio() {
             detectedStyle={state.detectedStyle}
             detecting={state.status === 'detecting'}
             isShoes={isShoes}
+            modelGender={state.modelGender}
+            aspectRatio={state.aspectRatio}
             onUpload={uploadClothing}
             onStyleSelect={selectStyle}
+            onGenderSelect={selectGender}
+            onAspectRatioSelect={selectAspectRatio}
           />
         </div>
 
         {/* Right: Preview */}
         <div className="glass-card rounded-2xl p-6 flex flex-col">
+          {generateError && (
+            <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
+              <span className="mt-0.5">⚠️</span>
+              <span>{generateError}</span>
+            </div>
+          )}
           <PreviewPanel
             status={state.status}
             resultUrl={state.resultUrl}

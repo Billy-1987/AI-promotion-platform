@@ -52,6 +52,8 @@ export async function generateTryOn(
   style?: StyleTag | null,
   productCategory?: 'clothing' | 'shoes',
   skipAnalyze?: boolean,
+  modelGender?: string,
+  aspectRatio?: string,
 ): Promise<TryOnResult> {
   const clothingBase64 = clothingFile ? await fileToBase64(clothingFile) : undefined
   const modelBase64 = modelFile ? await fileToBase64(modelFile) : undefined
@@ -68,6 +70,8 @@ export async function generateTryOn(
       backgroundId,
       productCategory: productCategory ?? undefined,
       skipAnalyze: skipAnalyze ?? (style != null && productCategory != null),
+      modelGender: modelGender ?? 'female',
+      aspectRatio: aspectRatio ?? '3:4',
     }),
   })
   if (!res.ok) throw new Error('Try-on generation failed')
@@ -100,11 +104,30 @@ export function suggestBackgrounds(style: StyleTag, productCategory?: 'clothing'
   return [...matched, ...others]
 }
 
+// 压缩图片到最大边 1024px，JPEG quality 0.85，避免 payload 过大
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader()
-    reader.onload = () => resolve((reader.result as string).split(',')[1])
     reader.onerror = reject
+    reader.onload = () => {
+      const img = new window.Image()
+      img.onerror = reject
+      img.onload = () => {
+        const MAX = 1024
+        let { width, height } = img
+        if (width > MAX || height > MAX) {
+          if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+          else { width = Math.round(width * MAX / height); height = MAX }
+        }
+        const canvas = document.createElement('canvas')
+        canvas.width = width
+        canvas.height = height
+        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+        // strip the data:image/...;base64, prefix
+        resolve(canvas.toDataURL('image/jpeg', 0.85).split(',')[1])
+      }
+      img.src = reader.result as string
+    }
     reader.readAsDataURL(file)
   })
 }
@@ -112,7 +135,9 @@ function fileToBase64(file: File): Promise<string> {
 function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new window.Image()
-    img.crossOrigin = 'anonymous'
+    if (src.startsWith('http://') || src.startsWith('https://')) {
+      img.crossOrigin = 'anonymous'
+    }
     img.onload = () => resolve(img)
     img.onerror = reject
     img.src = src
