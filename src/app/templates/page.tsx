@@ -187,10 +187,12 @@ function TemplateCard({
 function PreviewModal({
   item,
   imageUrl,
+  username,
   onClose,
 }: {
   item: TemplateItem
   imageUrl: string | null
+  username?: string
   onClose: () => void
 }) {
   const [withLogo, setWithLogo] = useState(false)
@@ -334,7 +336,7 @@ function PreviewModal({
     // 同步存入图库
     try {
       const dataUrl = await urlToDataUrl(src)
-      saveToGallery({ dataUrl, filename, source: 'template' })
+      saveToGallery({ dataUrl, filename, source: 'template' }, username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
@@ -567,6 +569,7 @@ function TemplatesContent() {
         <PreviewModal
           item={preview.item}
           imageUrl={preview.imageUrl}
+          username={user?.username}
           onClose={() => setPreview(null)}
         />
       )}

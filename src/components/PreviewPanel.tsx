@@ -15,6 +15,7 @@ interface Props {
   suggestedBackgrounds: string[]
   analysis: GeminiAnalysis | null
   isShoes: boolean
+  username?: string
   onSelectBackground: (id: string) => void
   onGenerate: () => void
 }
@@ -58,6 +59,7 @@ export default function PreviewPanel({
   suggestedBackgrounds,
   analysis,
   isShoes,
+  username,
   onSelectBackground,
   onGenerate,
 }: Props) {
@@ -250,7 +252,7 @@ export default function PreviewPanel({
 
     try {
       const dataUrl = await urlToDataUrl(src)
-      saveToGallery({ dataUrl, filename, source: 'tryon' })
+      saveToGallery({ dataUrl, filename, source: 'tryon' }, username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }

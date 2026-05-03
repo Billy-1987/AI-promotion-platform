@@ -118,6 +118,7 @@ export default function TryOnStudio() {
             suggestedBackgrounds={suggestedBackgrounds}
             analysis={state.analysis}
             isShoes={isShoes}
+            username={user?.username}
             onSelectBackground={selectBackground}
             onGenerate={generate}
           />

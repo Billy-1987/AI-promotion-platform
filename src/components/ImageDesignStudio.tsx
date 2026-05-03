@@ -40,7 +40,7 @@ interface HistoryItem {
 }
 
 const HISTORY_KEY = 'aipp_image_design_history'
-const HISTORY_MAX = 50
+const HISTORY_MAX = 10
 
 function loadHistory(): HistoryItem[] {
   try {
@@ -211,15 +211,21 @@ export default function ImageDesignStudio() {
       if (data.texts?.length) {
         setTextOverlays(data.texts.map((t: TextOverlay) => ({ ...t, locked: true })))
       }
-      // Save to history
-      const newItems: HistoryItem[] = data.images.map((img: GeneratedImage) => ({
-        id: img.id,
-        url: img.url,
-        prompt: usePrompt.trim(),
-        style: useStyle,
-        ratio: useRatio,
-        createdAt: Date.now(),
-      }))
+      // Save to history — 转成 base64 防止外部 URL 过期
+      const newItems: HistoryItem[] = await Promise.all(
+        data.images.map(async (img: GeneratedImage) => {
+          let dataUrl = img.url
+          try { dataUrl = await urlToDataUrl(img.url) } catch {}
+          return {
+            id: img.id,
+            url: dataUrl,
+            prompt: usePrompt.trim(),
+            style: useStyle,
+            ratio: useRatio,
+            createdAt: Date.now(),
+          }
+        })
+      )
       const updated = [...newItems, ...loadHistory()].slice(0, HISTORY_MAX)
       saveHistory(updated)
       setHistory(updated)
@@ -422,7 +428,7 @@ export default function ImageDesignStudio() {
     a.click()
     document.body.removeChild(a)
     try {
-      saveToGallery({ dataUrl, filename, source: 'image-design' })
+      saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
@@ -1118,7 +1124,7 @@ export default function ImageDesignStudio() {
                     try {
                       const { urlToDataUrl, saveToGallery } = await import('@/lib/gallery')
                       const dataUrl = await urlToDataUrl(detailImage!)
-                      saveToGallery({ dataUrl, filename: a.download, source: 'image-design' })
+                      saveToGallery({ dataUrl, filename: a.download, source: 'image-design' }, user?.username)
                     } catch {}
                   }}
                   className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium flex items-center justify-center gap-2"

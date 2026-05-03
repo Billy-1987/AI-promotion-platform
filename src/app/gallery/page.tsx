@@ -238,9 +238,9 @@ function GalleryContent() {
   const [batchProcessing, setBatchProcessing] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
 
-  useEffect(() => { setItems(getGallery()) }, [])
+  useEffect(() => { setItems(getGallery(user?.username)) }, [user?.username])
 
-  function refresh() { setItems(getGallery()) }
+  function refresh() { setItems(getGallery(user?.username)) }
 
   function toggleSelect(id: string) {
     setSelected(prev => {
@@ -276,7 +276,7 @@ function GalleryContent() {
   // 批量删除
   function handleBatchDelete() {
     const ids = Array.from(selected)
-    deleteFromGallery(ids)
+    deleteFromGallery(ids, user?.username)
     setSelected(new Set())
     refresh()
   }
@@ -294,7 +294,7 @@ function GalleryContent() {
         const composited = await compositeWithLogo(item.dataUrl, '/bigoffs-logo.png', pos)
         const newFilename = item.filename.replace(/\.(jpg|jpeg|png)$/i, '') + '-BIGOFFS.jpg'
         // 存入图库
-        saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source })
+        saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source }, user?.username)
         // 同时触发下载
         const a = document.createElement('a')
         a.href = composited
