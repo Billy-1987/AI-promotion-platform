@@ -32,7 +32,8 @@ interface GeneratedImage {
 
 interface HistoryItem {
   id: string
-  url: string
+  url: string       // 缩略图（128px），用于历史列表展示
+  fullUrl?: string  // 原图 URL，点击时恢复到主视图
   prompt: string
   style: string
   ratio: string
@@ -211,14 +212,26 @@ export default function ImageDesignStudio() {
       if (data.texts?.length) {
         setTextOverlays(data.texts.map((t: TextOverlay) => ({ ...t, locked: true })))
       }
-      // Save to history — 转成 base64 防止外部 URL 过期
+      // Save to history — 生成缩略图（128px）存入历史，避免 localStorage 超限
       const newItems: HistoryItem[] = await Promise.all(
         data.images.map(async (img: GeneratedImage) => {
-          let dataUrl = img.url
-          try { dataUrl = await urlToDataUrl(img.url) } catch {}
+          let thumbUrl = img.url
+          try {
+            // 把图片压缩成 128px 宽的缩略图再存历史
+            const src = img.url.startsWith('data:') ? img.url : await urlToDataUrl(img.url)
+            const el = document.createElement('img')
+            await new Promise<void>((res, rej) => { el.onload = () => res(); el.onerror = rej; el.src = src })
+            const canvas = document.createElement('canvas')
+            const scale = 128 / el.naturalWidth
+            canvas.width = 128
+            canvas.height = Math.round(el.naturalHeight * scale)
+            canvas.getContext('2d')!.drawImage(el, 0, 0, canvas.width, canvas.height)
+            thumbUrl = canvas.toDataURL('image/jpeg', 0.7)
+          } catch {}
           return {
             id: img.id,
-            url: dataUrl,
+            url: thumbUrl,          // 缩略图，仅用于历史列表展示
+            fullUrl: img.url,       // 原图 URL，点击时用
             prompt: usePrompt.trim(),
             style: useStyle,
             ratio: useRatio,
@@ -227,7 +240,7 @@ export default function ImageDesignStudio() {
         })
       )
       const updated = [...newItems, ...loadHistory()].slice(0, HISTORY_MAX)
-      saveHistory(updated)
+      try { saveHistory(updated) } catch { /* localStorage 满了也不影响主流程 */ }
       setHistory(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败')
@@ -1048,7 +1061,7 @@ export default function ImageDesignStudio() {
           {history.map(item => (
             <div key={item.id} className="relative group flex-shrink-0">
               <button
-                onClick={() => openDetail(item.url, item.prompt, item.style, item.ratio)}
+                onClick={() => openDetail(item.fullUrl ?? item.url, item.prompt, item.style, item.ratio)}
                 className="w-full rounded-xl overflow-hidden block"
               >
                 <img src={item.url} alt="" className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity" />
