@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
-  // Extend server-side HTTP timeout for long-running AI generation routes (Docker/self-hosted)
   serverExternalPackages: [],
   httpAgentOptions: { keepAlive: true },
   images: {
@@ -11,6 +10,16 @@ const nextConfig = {
       { protocol: 'https', hostname: 'pixabay.com' },
       { protocol: 'https', hostname: 'cdn.pixabay.com' },
     ],
+  },
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store, must-revalidate' },
+        ],
+      },
+    ]
   },
   experimental: {
     serverActions: {

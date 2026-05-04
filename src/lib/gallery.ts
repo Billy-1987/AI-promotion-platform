@@ -41,7 +41,11 @@ export function saveToGallery(item: Omit<GalleryItem, 'id' | 'createdAt'>, usern
   }
   // 最多保留 200 张，防止 localStorage 溢出
   const updated = [newItem, ...items].slice(0, 200)
-  localStorage.setItem(key, JSON.stringify(updated))
+  try {
+    localStorage.setItem(key, JSON.stringify(updated))
+  } catch {
+    // quota exceeded — skip gallery save silently
+  }
   return newItem
 }
 

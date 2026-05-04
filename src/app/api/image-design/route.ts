@@ -34,7 +34,7 @@ async function generateImage(parts: ContentPart[], aspectRatio: string): Promise
 }
 
 export async function POST(req: NextRequest) {
-  const { prompt, style, ratio, count, referenceImageBase64, referenceImageMime } = await req.json()
+  const { prompt, style, ratio, count, referenceImages } = await req.json()
 
   if (!prompt) {
     return NextResponse.json({ error: 'Prompt is required' }, { status: 400 })
@@ -50,13 +50,20 @@ export async function POST(req: NextRequest) {
 
   const textPrompt = `${prompt}. Style: ${stylePrompts[style] || stylePrompts.realistic}. Fill the entire canvas edge to edge, no blank areas, no borders. Do NOT render any text or typography in the image.`
 
+  const refs: Array<{ base64: string; mime: string }> = Array.isArray(referenceImages) ? referenceImages : []
+
   const parts: ContentPart[] = []
-  if (referenceImageBase64) {
-    parts.push({
-      type: 'image_url',
-      image_url: { url: `data:${referenceImageMime ?? 'image/jpeg'};base64,${referenceImageBase64}` },
+  if (refs.length > 0) {
+    refs.forEach(img => {
+      parts.push({
+        type: 'image_url',
+        image_url: { url: `data:${img.mime ?? 'image/jpeg'};base64,${img.base64}` },
+      })
     })
-    parts.push({ type: 'text', text: `Use the above image as a reference. ${textPrompt}` })
+    const refNote = refs.length > 1
+      ? `Use the above ${refs.length} images as references for the subjects/outfits shown. `
+      : 'Use the above image as a reference. '
+    parts.push({ type: 'text', text: `${refNote}${textPrompt}` })
   } else {
     parts.push({ type: 'text', text: textPrompt })
   }

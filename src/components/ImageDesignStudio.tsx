@@ -33,7 +33,6 @@ interface GeneratedImage {
 interface HistoryItem {
   id: string
   url: string
-  fullUrl?: string
   prompt: string
   style: string
   ratio: string
@@ -42,15 +41,77 @@ interface HistoryItem {
 
 const HISTORY_KEY = 'aipp_image_design_history'
 const HISTORY_MAX = 10
+const IDB_NAME = 'aipp_image_design'
+const IDB_STORE = 'full_images'
+
+// IndexedDB helpers — store/retrieve full-res images by item id
+function openIDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(IDB_NAME, 1)
+    req.onupgradeneeded = () => req.result.createObjectStore(IDB_STORE)
+    req.onsuccess = () => resolve(req.result)
+    req.onerror = () => reject(req.error)
+  })
+}
+
+async function idbPut(id: string, dataUrl: string) {
+  try {
+    const db = await openIDB()
+    const tx = db.transaction(IDB_STORE, 'readwrite')
+    tx.objectStore(IDB_STORE).put(dataUrl, id)
+    await new Promise<void>((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error) })
+    db.close()
+  } catch (e) {
+    console.error('idbPut failed', e)
+  }
+}
+
+async function idbGet(id: string): Promise<string | null> {
+  try {
+    const db = await openIDB()
+    const tx = db.transaction(IDB_STORE, 'readonly')
+    const result = await new Promise<string | null>((res, rej) => {
+      const req = tx.objectStore(IDB_STORE).get(id)
+      req.onsuccess = () => res(req.result ?? null)
+      req.onerror = () => rej(req.error)
+    })
+    db.close()
+    return result
+  } catch {
+    return null
+  }
+}
+
+async function idbDeleteMany(ids: string[]) {
+  try {
+    const db = await openIDB()
+    const tx = db.transaction(IDB_STORE, 'readwrite')
+    ids.forEach(id => tx.objectStore(IDB_STORE).delete(id))
+    db.close()
+  } catch {}
+}
 
 function loadHistory(): HistoryItem[] {
   try {
-    return JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]')
+    const items: HistoryItem[] = JSON.parse(localStorage.getItem(HISTORY_KEY) ?? '[]')
+    // Migrate: drop any items whose url is a large base64 (>50KB means it's a full-res image, not a thumbnail)
+    const clean = items.filter(item => !item.url || item.url.length < 50000)
+    if (clean.length !== items.length) {
+      localStorage.setItem(HISTORY_KEY, JSON.stringify(clean))
+    }
+    return clean
   } catch { return [] }
 }
 
 function saveHistory(items: HistoryItem[]) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(items.slice(0, HISTORY_MAX)))
+  const toSave = items.slice(0, HISTORY_MAX)
+  try {
+    // Remove old key first to free space before writing new data
+    localStorage.removeItem(HISTORY_KEY)
+    localStorage.setItem(HISTORY_KEY, JSON.stringify(toSave))
+  } catch {
+    // Still full after clearing history — give up silently
+  }
 }
 
 interface TextOverlay {
@@ -90,10 +151,8 @@ export default function ImageDesignStudio() {
   const [ratio, setRatio] = useState('1:1')
   const [count, setCount] = useState(1)
 
-  // Reference image
-  const [refImageBase64, setRefImageBase64] = useState<string | null>(null)
-  const [refImageMime, setRefImageMime] = useState<string>('image/jpeg')
-  const [refImagePreview, setRefImagePreview] = useState<string | null>(null)
+  // Reference images (multi)
+  const [refImages, setRefImages] = useState<Array<{ base64: string; mime: string; preview: string }>>([])
   const [refDragOver, setRefDragOver] = useState(false)
   const refInputRef = useRef<HTMLInputElement>(null)
 
@@ -108,6 +167,7 @@ export default function ImageDesignStudio() {
   const [detailPrompt, setDetailPrompt] = useState('')
   const [detailStyle, setDetailStyle] = useState('realistic')
   const [detailRatio, setDetailRatio] = useState('1:1')
+  const [detailHistoryIndex, setDetailHistoryIndex] = useState<number | null>(null)
 
   // History
   const [history, setHistory] = useState<HistoryItem[]>([])
@@ -142,10 +202,10 @@ export default function ImageDesignStudio() {
 
   // ── Reference image handlers ──────────────────────────────────
   function handleRefFile(file: File) {
+    if (refImages.length >= 4) return // max 4 reference images
     const reader = new FileReader()
     reader.onload = e => {
       const dataUrl = e.target?.result as string
-      // 压缩到最大边 1024px，避免 payload 过大
       const img = new window.Image()
       img.onload = () => {
         const MAX = 1024
@@ -159,9 +219,7 @@ export default function ImageDesignStudio() {
         canvas.height = height
         canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
         const compressed = canvas.toDataURL('image/jpeg', 0.85)
-        setRefImagePreview(compressed)
-        setRefImageBase64(compressed.split(',')[1])
-        setRefImageMime('image/jpeg')
+        setRefImages(prev => [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }])
       }
       img.src = dataUrl
     }
@@ -171,8 +229,9 @@ export default function ImageDesignStudio() {
   function handleRefDrop(e: React.DragEvent) {
     e.preventDefault()
     setRefDragOver(false)
-    const file = e.dataTransfer.files[0]
-    if (file && file.type.startsWith('image/')) handleRefFile(file)
+    Array.from(e.dataTransfer.files).forEach(file => {
+      if (file.type.startsWith('image/')) handleRefFile(file)
+    })
   }
 
   async function handleGenerate(overridePrompt?: string, overrideStyle?: string, overrideRatio?: string) {
@@ -200,8 +259,7 @@ export default function ImageDesignStudio() {
           style: useStyle,
           ratio: useRatio,
           count,
-          referenceImageBase64: refImageBase64 ?? undefined,
-          referenceImageMime: refImageBase64 ? refImageMime : undefined,
+          referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
         }),
       })
       if (!res.ok) throw new Error('生成失败，请重试')
@@ -215,32 +273,37 @@ export default function ImageDesignStudio() {
       // Save to history — 生成缩略图（128px）存入历史，避免 localStorage 超限
       const newItems: HistoryItem[] = await Promise.all(
         data.images.map(async (img: GeneratedImage) => {
-          let thumbUrl = img.url
+          let thumbUrl = ''
           try {
-            // 把图片压缩成 128px 宽的缩略图再存历史
-            const src = img.url.startsWith('data:') ? img.url : await urlToDataUrl(img.url)
-            const el = document.createElement('img')
-            await new Promise<void>((res, rej) => { el.onload = () => res(); el.onerror = rej; el.src = src })
+            // Convert data URL to blob, then use createImageBitmap for reliable decoding
+            const res = await fetch(img.url)
+            const blob = await res.blob()
+            const bitmap = await createImageBitmap(blob)
             const canvas = document.createElement('canvas')
-            const scale = 128 / el.naturalWidth
-            canvas.width = 128
-            canvas.height = Math.round(el.naturalHeight * scale)
-            canvas.getContext('2d')!.drawImage(el, 0, 0, canvas.width, canvas.height)
-            thumbUrl = canvas.toDataURL('image/jpeg', 0.7)
-          } catch {}
+            const scale = 96 / bitmap.width
+            canvas.width = 96
+            canvas.height = Math.round(bitmap.height * scale)
+            canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+            bitmap.close()
+            thumbUrl = canvas.toDataURL('image/jpeg', 0.3)
+          } catch (e) {
+            console.error('Thumbnail generation failed', e)
+          }
+          if (!thumbUrl) return null
+          // Persist full-res image to IndexedDB
+          await idbPut(img.id, img.url)
           return {
             id: img.id,
-            url: thumbUrl,          // 缩略图，仅用于历史列表展示
-            fullUrl: img.url,       // 原图 URL，点击时用
+            url: thumbUrl,
             prompt: usePrompt.trim(),
             style: useStyle,
             ratio: useRatio,
             createdAt: Date.now(),
           }
         })
-      )
+      ).then(items => items.filter(Boolean) as HistoryItem[])
       const updated = [...newItems, ...loadHistory()].slice(0, HISTORY_MAX)
-      try { saveHistory(updated) } catch { /* localStorage 满了也不影响主流程 */ }
+      saveHistory(updated)
       setHistory(updated)
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败')
@@ -249,16 +312,31 @@ export default function ImageDesignStudio() {
     }
   }
 
-  function openDetail(url: string, p: string, s: string, r: string) {
+  function openDetail(url: string, p: string, s: string, r: string, historyIndex?: number) {
     setDetailImage(url)
     setDetailPrompt(p)
     setDetailStyle(s)
     setDetailRatio(r)
+    setDetailHistoryIndex(historyIndex ?? null)
+  }
+
+  async function navigateHistory(dir: 1 | -1) {
+    if (detailHistoryIndex === null) return
+    const next = detailHistoryIndex + dir
+    if (next < 0 || next >= history.length) return
+    const item = history[next]
+    const fullUrl = await idbGet(item.id) ?? item.url
+    setDetailImage(fullUrl)
+    setDetailPrompt(item.prompt)
+    setDetailStyle(item.style)
+    setDetailRatio(item.ratio)
+    setDetailHistoryIndex(next)
   }
 
   function deleteHistory(id: string) {
     const updated = loadHistory().filter(h => h.id !== id)
     saveHistory(updated)
+    idbDeleteMany([id])
     setHistory(updated)
   }
 
@@ -402,7 +480,8 @@ export default function ImageDesignStudio() {
   function handleMouseMove(e: React.MouseEvent) {
     if (dragging) updateLogoPos(e.clientX, e.clientY)
   }
-  function handleMouseUp() { setDragging(false) }
+  const wasDraggingRef = useRef(false)
+  function handleMouseUp() { wasDraggingRef.current = dragging; setDragging(false) }
 
   function handleTouchStart(e: React.TouchEvent) {
     if (draggingTextRef.current || !withLogo || e.touches.length !== 1) return
@@ -414,7 +493,7 @@ export default function ImageDesignStudio() {
     e.preventDefault()
     updateLogoPos(e.touches[0].clientX, e.touches[0].clientY)
   }
-  function handleTouchEnd() { setDragging(false) }
+  function handleTouchEnd() { wasDraggingRef.current = dragging; setDragging(false) }
 
   async function handleDownload() {
     if (!selectedImage) return
@@ -510,30 +589,47 @@ export default function ImageDesignStudio() {
         <div className="w-72 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
           {/* Reference image upload */}
           <div className="glass-card rounded-2xl p-4">
-            <label className="block text-sm font-medium text-slate-700 mb-2">参考图（可选）</label>
-            {refImagePreview ? (
-              <div className="relative">
-                <img src={refImagePreview} alt="参考图" className="w-full h-32 object-cover rounded-xl" />
-                <button
-                  onClick={() => { setRefImagePreview(null); setRefImageBase64(null) }}
-                  className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center text-xs shadow"
-                >✕</button>
+            <label className="block text-sm font-medium text-slate-700 mb-2">
+              参考图（可选，最多4张）
+            </label>
+            {refImages.length > 0 && (
+              <div className="grid grid-cols-2 gap-2 mb-2">
+                {refImages.map((img, i) => (
+                  <div key={i} className="relative">
+                    <img src={img.preview} alt={`参考图${i + 1}`} className="w-full h-20 object-cover rounded-lg" />
+                    <button
+                      onClick={() => setRefImages(prev => prev.filter((_, idx) => idx !== i))}
+                      className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center text-xs shadow"
+                    >✕</button>
+                    <span className="absolute bottom-1 left-1 bg-black/50 text-white text-xs px-1 rounded">图{i + 1}</span>
+                  </div>
+                ))}
               </div>
-            ) : (
+            )}
+            {refImages.length < 4 && (
               <div
                 onDrop={handleRefDrop}
                 onDragOver={e => { e.preventDefault(); setRefDragOver(true) }}
                 onDragLeave={() => setRefDragOver(false)}
                 onClick={() => refInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl h-24 flex flex-col items-center justify-center cursor-pointer transition-colors ${refDragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-300 hover:bg-slate-50'}`}
+                className={`border-2 border-dashed rounded-xl h-20 flex flex-col items-center justify-center cursor-pointer transition-colors ${refDragOver ? 'border-blue-400 bg-blue-50' : 'border-slate-300 hover:border-blue-300 hover:bg-slate-50'}`}
               >
-                <svg className="w-6 h-6 text-slate-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <svg className="w-5 h-5 text-slate-400 mb-1" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                 </svg>
-                <p className="text-xs text-slate-400">拖拽或点击上传参考图</p>
+                <p className="text-xs text-slate-400">
+                  {refImages.length === 0 ? '拖拽或点击上传参考图' : `再添加一张（${refImages.length}/4）`}
+                </p>
               </div>
             )}
-            <input ref={refInputRef} type="file" accept="image/*" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) handleRefFile(f) }} />
+            <input
+              ref={refInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={e => { Array.from(e.target.files ?? []).forEach(f => handleRefFile(f)); e.target.value = '' }}
+            />
           </div>
 
           {/* Prompt */}
@@ -704,7 +800,7 @@ export default function ImageDesignStudio() {
                   alt="Generated"
                   className="w-full h-full object-contain rounded-xl cursor-pointer"
                   draggable={false}
-                  onClick={e => { e.stopPropagation(); openDetail(selectedImage, prompt, style, ratio) }}
+                  onClick={e => { e.stopPropagation(); if (!wasDraggingRef.current) openDetail(selectedImage, prompt, style, ratio) }}
                 />
 
                 {/* 文字 HTML overlay — 始终显示，canvas 只用于下载合成 */}
@@ -871,131 +967,7 @@ export default function ImageDesignStudio() {
           {selectedImage && !generating && (
             <div className="flex flex-col gap-2 overflow-y-auto max-h-64">
 
-              {/* 选中文字时：字号/字体/颜色工具栏 */}
-              {selectedTextIdx !== null && textOverlays[selectedTextIdx] && !textOverlays[selectedTextIdx].locked && (() => {
-                const t = textOverlays[selectedTextIdx]
-                const update = (patch: Partial<TextOverlay>) => {
-                  const updated = textOverlays.map((o, i) => i === selectedTextIdx ? { ...o, ...patch } : o)
-                  setTextOverlays(updated)
-                }
-                return (
-                  <div className="glass-card border border-blue-200 rounded-xl p-3 flex flex-col gap-2">
-                    <div className="flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-700">文字样式 · 点击图片上的文字可直接编辑</span>
-                      <button onClick={() => { setSelectedTextIdx(null); setInlineEditIdx(null) }} className="text-slate-400 hover:text-slate-700 text-xs">完成</button>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">字号</span>
-                      <div className="flex gap-1 flex-1">
-                        {FONT_SIZES.map((fs, i) => (
-                          <button key={fs} onClick={() => update({ fontSize: fs })}
-                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${t.fontSize === fs ? 'text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                            style={t.fontSize === fs ? { background: '#0034cc' } : {}}>
-                            {FONT_SIZE_LABELS[i]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">字体</span>
-                      <select value={t.fontFamily} onChange={e => update({ fontFamily: e.target.value })}
-                        className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400"
-                        style={{ fontFamily: t.fontFamily }}>
-                        {TEXT_FONTS.map(f => (
-                          <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}　{f.preview}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">颜色</span>
-                      <div className="flex gap-1.5 flex-1">
-                        {TEXT_COLORS.map(c => (
-                          <button key={c} onClick={() => update({ color: c })}
-                            className={`w-6 h-6 rounded-full border-2 transition-all ${t.color === c ? 'scale-110' : 'border-slate-300'}`}
-                            style={{ backgroundColor: c, borderColor: t.color === c ? '#0034cc' : undefined }} />
-                        ))}
-                      </div>
-                    </div>
-                    <button onClick={() => { handleRemoveText(selectedTextIdx); setSelectedTextIdx(null); setInlineEditIdx(null) }}
-                      className="py-1.5 bg-red-50 hover:bg-red-100 text-red-600 text-sm rounded-lg transition-colors">
-                      删除此文字
-                    </button>
-                  </div>
-                )
-              })()}
-
-              {/* 新增文字面板 */}
-              {showTextEditor && selectedTextIdx === null && (
-                <div className="glass-card border border-slate-200 rounded-xl p-4 flex flex-col gap-3">
-                  <input
-                    type="text"
-                    value={editingText.content}
-                    onChange={e => setEditingText(prev => ({ ...prev, content: e.target.value }))}
-                    placeholder="输入文字内容..."
-                    className="w-full bg-white border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:border-blue-400"
-                    autoFocus
-                    onKeyDown={e => { if (e.key === 'Enter') handleApplyText() }}
-                  />
-                  <div className="flex flex-col gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">字号</span>
-                      <div className="flex gap-1 flex-1">
-                        {FONT_SIZES.map((fs, i) => (
-                          <button key={fs} onClick={() => setEditingText(prev => ({ ...prev, fontSize: fs }))}
-                            className={`flex-1 px-2 py-1 rounded text-xs font-medium transition-colors ${editingText.fontSize === fs ? 'text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}
-                            style={editingText.fontSize === fs ? { background: '#0034cc' } : {}}>
-                            {FONT_SIZE_LABELS[i]}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">字体</span>
-                      <select value={editingText.fontFamily} onChange={e => setEditingText(prev => ({ ...prev, fontFamily: e.target.value }))}
-                        className="flex-1 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800 focus:outline-none focus:border-blue-400"
-                        style={{ fontFamily: editingText.fontFamily }}>
-                        {TEXT_FONTS.map(f => (
-                          <option key={f.value} value={f.value} style={{ fontFamily: f.value }}>{f.label}　{f.preview}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs text-slate-500 w-10">颜色</span>
-                      <div className="flex gap-1.5 flex-1">
-                        {TEXT_COLORS.map(c => (
-                          <button key={c} onClick={() => setEditingText(prev => ({ ...prev, color: c }))}
-                            className={`w-6 h-6 rounded-full border-2 transition-all ${editingText.color === c ? 'scale-110' : 'border-slate-300'}`}
-                            style={{ backgroundColor: c, borderColor: editingText.color === c ? '#0034cc' : undefined }} />
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex gap-2">
-                    <button onClick={() => { setShowTextEditor(false); setEditingText({ content: '', fontSize: 0.07, color: '#ffffff', fontFamily: TEXT_FONTS[0].value, x: 0.5, y: 0.5 }) }}
-                      className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm rounded-lg transition-colors">
-                      取消
-                    </button>
-                    <button onClick={handleApplyText} disabled={!editingText.content.trim()}
-                      className="flex-1 py-1.5 text-white disabled:opacity-40 text-sm font-medium rounded-lg transition-colors"
-                      style={{ background: '#0034cc' }}>
-                      添加文字
-                    </button>
-                  </div>
-                </div>
-              )}
-
               <div className="flex gap-2">
-                <button
-                  onClick={() => { setShowTextEditor(v => !v); setSelectedTextIdx(null) }}
-                  className={`flex items-center gap-1.5 px-3 py-2 text-sm font-medium rounded-lg transition-colors ${showTextEditor && selectedTextIdx === null ? 'text-white' : 'bg-white hover:bg-slate-50 text-slate-700 border border-slate-200'}`}
-                  style={showTextEditor && selectedTextIdx === null ? { background: '#0034cc' } : {}}
-                >
-                  <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                  </svg>
-                  添加文字
-                </button>
-
                 {!withLogo ? (
                   <button onClick={handleAddLogo} disabled={compositing}
                     className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 disabled:opacity-40 text-sm font-medium rounded-lg transition-colors">
@@ -1058,13 +1030,16 @@ export default function ImageDesignStudio() {
               <p className="text-xs text-slate-400 text-center">生成图片后<br/>将显示在这里</p>
             </div>
           )}
-          {history.map(item => (
+          {history.map((item, index) => (
             <div key={item.id} className="relative group flex-shrink-0">
               <button
-                onClick={() => openDetail(item.url, item.prompt, item.style, item.ratio)}
+                onClick={async () => {
+                  const fullUrl = await idbGet(item.id) ?? item.url
+                  openDetail(fullUrl, item.prompt, item.style, item.ratio, index)
+                }}
                 className="w-full rounded-xl overflow-hidden block"
               >
-                <img src={item.url} alt="" className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity" />
+                <img src={item.url} alt="" className="w-full object-cover rounded-xl hover:opacity-90 transition-opacity" style={{ aspectRatio: item.ratio.replace(':', '/') }} />
                 <p className="text-xs text-slate-500 mt-1 px-0.5 truncate">{item.prompt}</p>
               </button>
               <button
@@ -1091,8 +1066,36 @@ export default function ImageDesignStudio() {
             >✕</button>
 
             {/* Image */}
-            <div className="flex-1 bg-slate-100 flex items-center justify-center p-6">
+            <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 relative">
               <img src={detailImage} alt="" className="max-w-full max-h-full object-contain rounded-xl shadow" />
+              {/* Prev arrow */}
+              {detailHistoryIndex !== null && detailHistoryIndex < history.length - 1 && (
+                <button
+                  onClick={() => navigateHistory(1)}
+                  className="absolute left-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/30 hover:bg-black/50 text-white flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+                  </svg>
+                </button>
+              )}
+              {/* Next arrow */}
+              {detailHistoryIndex !== null && detailHistoryIndex > 0 && (
+                <button
+                  onClick={() => navigateHistory(-1)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-black/30 hover:bg-black/50 text-white flex items-center justify-center transition-colors"
+                >
+                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+                  </svg>
+                </button>
+              )}
+              {/* Position indicator */}
+              {detailHistoryIndex !== null && history.length > 1 && (
+                <div className="absolute bottom-3 left-1/2 -translate-x-1/2 bg-black/40 text-white text-xs px-2.5 py-1 rounded-full">
+                  {detailHistoryIndex + 1} / {history.length}
+                </div>
+              )}
             </div>
 
             {/* Right panel */}
@@ -1127,6 +1130,30 @@ export default function ImageDesignStudio() {
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
                   </svg>
                   重新生成
+                </button>
+                <button
+                  onClick={async () => {
+                    // Load this image into the main preview and trigger logo compositing
+                    setSelectedImage(detailImage!)
+                    setRatio(detailRatio)
+                    setDetailImage(null)
+                    // Small delay to let state settle before compositing
+                    setTimeout(async () => {
+                      try {
+                        const poster = await loadImg(detailImage!)
+                        const logo = await loadImg('/bigoffs-logo.png')
+                        posterImgRef.current = poster
+                        logoImgRef.current = logo
+                        setWithLogo(true)
+                      } catch (e) {
+                        console.error('Logo compositing failed', e)
+                      }
+                    }, 50)
+                  }}
+                  className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium flex items-center justify-center gap-2"
+                >
+                  <img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />
+                  一键添加 Logo
                 </button>
                 <button
                   onClick={async () => {
