@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { TryOnState, TryOnResult, StyleTag } from '@/types'
+import { TryOnState, TryOnResult, StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
 import { suggestBackgrounds, generateTryOn } from '@/lib/mockAI'
 
 export function useTryOn() {
@@ -12,6 +12,8 @@ export function useTryOn() {
     clothingFile: null,
     clothingPreviewUrl: null,
     detectedStyle: null,
+    modelGender: 'female',
+    aspectRatio: '3:4',
     selectedBackground: null,
     resultUrl: null,
     tryOnResult: null,
@@ -22,17 +24,6 @@ export function useTryOn() {
 
   const uploadClothing = useCallback(async (file: File) => {
     const previewUrl = URL.createObjectURL(file)
-    setState(prev => ({
-      ...prev,
-      status: 'processing',
-      clothingFile: file,
-      clothingPreviewUrl: previewUrl,
-      analysis: null,
-      resultUrl: null,
-      tryOnResult: null,
-    }))
-
-    // Generate immediately with default style, API will analyze in parallel
     const defaultStyle: StyleTag = 'womenswear'
     const defaultCategory: 'clothing' | 'shoes' = 'clothing'
     const backgrounds = suggestBackgrounds(defaultStyle, defaultCategory)
@@ -40,42 +31,15 @@ export function useTryOn() {
 
     setState(prev => ({
       ...prev,
+      status: 'ready',
+      clothingFile: file,
+      clothingPreviewUrl: previewUrl,
+      analysis: null,
+      resultUrl: null,
+      tryOnResult: null,
       detectedStyle: defaultStyle,
       selectedBackground: backgrounds[0],
     }))
-
-    try {
-      const result: TryOnResult = await generateTryOn(file, backgrounds[0], null, null, undefined)
-
-      // Extract analyzed style/category from result
-      const analyzedStyle = (result as any).analyzeData?.style ?? defaultStyle
-      const analyzedCategory = (result as any).analyzeData?.productCategory ?? defaultCategory
-
-      // Update backgrounds if style changed
-      if (analyzedStyle !== defaultStyle || analyzedCategory !== defaultCategory) {
-        const newBackgrounds = suggestBackgrounds(analyzedStyle, analyzedCategory)
-        setSuggestedBackgrounds(newBackgrounds)
-      }
-
-      setState(prev => ({
-        ...prev,
-        status: 'result',
-        resultUrl: result.previewUrl,
-        tryOnResult: result,
-        detectedStyle: analyzedStyle,
-        analysis: (result as any).analyzeData ? {
-          style: analyzedStyle,
-          productCategory: analyzedCategory,
-          colors: (result as any).analyzeData.colors ?? [],
-          category: '',
-          keywords: (result as any).analyzeData.keywords ?? [],
-          backgroundSuggestion: '',
-          productDescription: result.description ?? '',
-        } : null,
-      }))
-    } catch {
-      setState(prev => ({ ...prev, status: 'ready' }))
-    }
   }, [])
 
   const selectBackground = useCallback((backgroundId: string) => {
@@ -89,9 +53,20 @@ export function useTryOn() {
     setState(prev => ({ ...prev, detectedStyle: style, selectedBackground: backgrounds[0] }))
   }, [state.analysis])
 
+  const selectGender = useCallback((gender: ModelGender) => {
+    setState(prev => ({ ...prev, modelGender: gender }))
+  }, [])
+
+  const selectAspectRatio = useCallback((ratio: TryOnAspectRatio) => {
+    setState(prev => ({ ...prev, aspectRatio: ratio }))
+  }, [])
+
+  const [generateError, setGenerateError] = useState<string | null>(null)
+
   const generate = useCallback(async () => {
     if (!state.clothingFile || !state.selectedBackground) return
     setState(prev => ({ ...prev, status: 'processing' }))
+    setGenerateError(null)
     const productCategory = state.analysis?.productCategory ?? 'clothing'
     try {
       const result: TryOnResult = await generateTryOn(
@@ -100,12 +75,17 @@ export function useTryOn() {
         null,
         state.detectedStyle,
         productCategory,
+        undefined,
+        state.modelGender,
+        state.aspectRatio,
       )
       setState(prev => ({ ...prev, status: 'result', resultUrl: result.previewUrl, tryOnResult: result }))
-    } catch {
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : '生成失败，请重试'
+      setGenerateError(msg)
       setState(prev => ({ ...prev, status: 'ready' }))
     }
-  }, [state.clothingFile, state.selectedBackground, state.detectedStyle, state.analysis])
+  }, [state.clothingFile, state.selectedBackground, state.detectedStyle, state.analysis, state.modelGender, state.aspectRatio])
 
   const reset = useCallback(() => {
     if (state.clothingPreviewUrl) URL.revokeObjectURL(state.clothingPreviewUrl)
@@ -116,13 +96,16 @@ export function useTryOn() {
       clothingFile: null,
       clothingPreviewUrl: null,
       detectedStyle: null,
+      modelGender: 'female',
+      aspectRatio: '3:4',
       selectedBackground: null,
       resultUrl: null,
       tryOnResult: null,
       analysis: null,
     })
     setSuggestedBackgrounds([])
+    setGenerateError(null)
   }, [state.clothingPreviewUrl])
 
-  return { state, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, generate, reset }
+  return { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset }
 }

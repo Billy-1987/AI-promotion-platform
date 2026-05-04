@@ -15,7 +15,7 @@ export default function BackgroundSelector({ selectedId, suggestedOrder, onSelec
 
   return (
     <div className="mt-4">
-      <p className="text-xs text-zinc-400 mb-2">选择背景</p>
+      <p className="text-xs text-slate-500 mb-2">选择背景</p>
       <div className="grid grid-cols-4 gap-2">
         {ordered.map(bg => (
           <button
@@ -23,9 +23,10 @@ export default function BackgroundSelector({ selectedId, suggestedOrder, onSelec
             onClick={() => onSelect(bg.id)}
             className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
               selectedId === bg.id
-                ? 'bg-indigo-600 text-white ring-2 ring-indigo-400'
-                : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600 hover:text-white'
+                ? 'text-white ring-2'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-800'
             }`}
+            style={selectedId === bg.id ? { background: '#0034cc', boxShadow: '0 0 0 2px rgba(0,52,204,0.3)' } : {}}
           >
             {bg.label}
           </button>

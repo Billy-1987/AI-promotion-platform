@@ -22,7 +22,7 @@ interface Props {
 export default function StyleTagSelector({ selected, detecting, onSelect }: Props) {
   return (
     <div className="mt-4">
-      <p className="text-xs text-zinc-400 mb-2">
+      <p className="text-xs text-slate-500 mb-2">
         {detecting ? '正在识别服装风格...' : '服装风格'}
       </p>
       <div className="flex flex-wrap gap-2">
@@ -33,9 +33,10 @@ export default function StyleTagSelector({ selected, detecting, onSelect }: Prop
             disabled={detecting}
             className={`px-3 py-1.5 rounded-full text-sm font-medium transition-all ${
               selected === tag.value
-                ? 'bg-indigo-600 text-white'
-                : 'bg-zinc-700 text-zinc-300 hover:bg-zinc-600'
+                ? 'text-white'
+                : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
             } disabled:opacity-40 disabled:cursor-not-allowed`}
+            style={selected === tag.value ? { background: '#0034cc' } : {}}
           >
             {detecting && selected === tag.value ? (
               <span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin mr-1" />

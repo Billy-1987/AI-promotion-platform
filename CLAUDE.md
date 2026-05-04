@@ -71,3 +71,59 @@ Three independent LLM calls run **in parallel** via `Promise.allSettled` / `Prom
 - Do not create new git branches unless requested (global rule).
 - Do not regenerate poster PNGs that already exist in `public/generated/` — the cache is intentional.
 - When adding a background to `mockAI.ts`, also add its scene description to `BG_SCENES` in `api/tryon/route.ts`, otherwise the image prompt falls back to "clean studio".
+
+## BigOffs 登录集成
+
+本项目已通过 bigoffs-login plugin 集成 BigOffs OAuth2 登录。
+
+- 登录入口：`src/components/LoginPage.tsx`（「使用 BigOffs 账号登录」按钮）
+- 回调地址：`src/app/auth/callback/page.tsx`（`/auth/callback`）
+- 后端接口：`src/app/api/auth/exchange/route.ts`（POST /api/auth/exchange，入参 code + redirect_uri，返回用户信息）
+- 配置：`.env.local` 的 BIGOFFS_CLIENT_ID / BIGOFFS_CLIENT_SECRET
+- 启动命令：`npm run dev`
+- 现有硬编码账号登录保留作为测试备用
+
+未来 Claude 会话在本项目工作时，无需重新扫描即可知道此集成已存在。
+
+## Deployment
+
+### Server
+
+- Region: Singapore (ap-southeast-1) — Gemini models have region restrictions, Hong Kong is blocked
+- IP: 47.236.90.150
+- Stack: Docker + nginx reverse proxy (port 80 → 3001)
+- Project path: `/opt/apps/i3oy507-aipp/`
+- Domains: `source.aipp.bigoffs.cn` (origin), `aipp.bigoffs.cn` (CDN)
+
+### Environment variables (on server)
+
+Stored in `/opt/apps/i3oy507-aipp/.env`, loaded via `docker run --env-file`. Never commit to repo.
+
+```
+OPENROUTER_API_KEY=<key>
+BIGOFFS_CLIENT_ID=<id>
+BIGOFFS_CLIENT_SECRET=<secret>
+```
+
+### Deploy
+
+```bash
+bash deploy.sh
+```
+
+The script packs source files (excluding `node_modules`, `.next`, `.git`, `data/`, `.env*`), uploads to server, rebuilds Docker image, and restarts the container. `data/` and `generated/` are mounted as volumes and preserved across deploys.
+
+### Prerequisites for a new deployer
+
+1. SSH public key added to `deployer@47.236.90.150:~/.ssh/authorized_keys`
+2. That's it — `deploy.sh` handles the rest
+
+### Manual operations on server
+
+```bash
+ssh deployer@47.236.90.150
+docker logs aipp                    # view logs
+docker exec aipp printenv           # check env vars
+cat /opt/apps/i3oy507-aipp/.env     # view secrets
+docker restart aipp                 # restart without rebuild
+```

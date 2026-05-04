@@ -10,7 +10,7 @@ interface AuthContextType {
   logout: () => void
 }
 
-const TEST_ACCOUNTS: Array<User & { password: string }> = [
+export const TEST_ACCOUNTS: Array<User & { password: string }> = [
   { username: 'hq_admin', password: 'hq123', name: '张同学', role: 'hq' as UserRole },
   { username: 'hq_market', password: 'hq123', name: '李同学', role: 'hq' as UserRole },
   { username: 'region_east', password: 'reg123', name: '王运营', role: 'regional' as UserRole, region: '华东区' },
@@ -27,7 +27,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem('aipp_user')
-      if (saved) setUser(JSON.parse(saved))
+      if (saved) {
+        const parsed = JSON.parse(saved)
+        // 兼容 BigOffs 登录用户和硬编码账号用户
+        setUser({
+          username: parsed.username,
+          name: parsed.name,
+          role: (parsed.role as UserRole) ?? 'regional',
+          region: parsed.region,
+        })
+      }
     } catch {}
     setReady(true)
   }, [])
@@ -58,7 +67,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 export function useAuth() {
   const ctx = useContext(AuthContext)
   if (!ctx) {
-    // Return a safe default during SSR/hydration before provider mounts
     return {
       user: null,
       ready: false,
@@ -68,5 +76,3 @@ export function useAuth() {
   }
   return ctx
 }
-
-export { TEST_ACCOUNTS }

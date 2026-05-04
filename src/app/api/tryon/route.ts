@@ -1,12 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
+import { openrouter as client } from '@/lib/openrouter'
 
-export const maxDuration = 120 // seconds
-
-const client = new OpenAI({
-  baseURL: 'https://openrouter.ai/api/v1',
-  apiKey: process.env.OPENROUTER_API_KEY,
-})
+export const maxDuration = 120
 
 const STYLE_LABELS: Record<string, string> = {
   sport: 'sportswear', outdoor: 'outdoor', menswear: "men's fashion",
@@ -19,7 +15,6 @@ const STYLE_ZH: Record<string, string> = {
   kids: '儿童', trendy: '潮流', vintage: '复古', workwear: '上班通勤',
 }
 
-// Detailed background scene descriptions that will be injected into the image prompt
 const BG_SCENES: Record<string, string> = {
   bg_sport1:  'a modern indoor sports gym with equipment, bright overhead lighting, polished floors',
   bg_sport2:  'an outdoor athletics running track with stadium stands, blue sky, natural sunlight',
@@ -37,7 +32,6 @@ const BG_SCENES: Record<string, string> = {
   bg_vintage2:'a charming old town alley with brick walls, cobblestone street, warm afternoon light',
   bg_work1:   'a modern open-plan office with large windows, city view, clean minimalist design',
   bg_work2:   'a professional conference room with a long table, city skyline view, polished corporate feel',
-  // 鞋子专属背景
   bg_shoe1:   'a warm natural wooden floor surface, soft side lighting, clean minimal studio feel',
   bg_shoe2:   'lush green outdoor grass lawn, natural daylight, fresh outdoor atmosphere',
   bg_shoe3:   'a busy urban city sidewalk with concrete pavement, street life in background, golden hour light',
@@ -46,126 +40,194 @@ const BG_SCENES: Record<string, string> = {
   bg_shoe6:   'an outdoor sports court with court markings, bright natural sunlight, athletic environment',
 }
 
-// Model descriptions — explicitly Western/European appearance, young 25-30
-const MODEL_BY_STYLE: Record<string, string> = {
-  sport:     'a fit athletic Western European model (age 25-30), energetic sporty pose',
-  outdoor:   'a handsome young Caucasian male model (age 25-30), adventurous outdoor look',
-  menswear:  'a handsome young Caucasian male model (age 25-30), sharp jawline, confident sunny smile, athletic build',
-  womenswear:'a beautiful young European female model (age 25-30), slender figure, sweet charming smile, radiant skin',
-  kids:      'a cute Western child model matching the clothing age',
-  trendy:    'a cool young Caucasian streetwear model (age 25-30), urban attitude, stylish look',
-  vintage:   'a stylish young European model (age 25-30), vintage charm, warm smile',
-  workwear:  'a polished young Caucasian professional model (age 25-30), confident business look',
+const MODEL_BY_GENDER: Record<string, Record<string, string>> = {
+  female: {
+    sport:     'a fit athletic young European female model (age 22-28), energetic sporty pose',
+    outdoor:   'a sporty young Caucasian female model (age 22-28), adventurous outdoor look',
+    menswear:  'a stylish young European female model (age 22-28), confident pose',
+    womenswear:'a beautiful young European female model (age 22-28), slender figure, sweet charming smile',
+    kids:      'a cute Western girl child model (age 6-12)',
+    trendy:    'a cool young Caucasian female streetwear model (age 20-26), urban attitude',
+    vintage:   'a stylish young European female model (age 22-28), vintage charm, warm smile',
+    workwear:  'a polished young Caucasian professional female model (age 25-32), confident business look',
+  },
+  male: {
+    sport:     'a fit athletic young Caucasian male model (age 22-28), energetic sporty pose',
+    outdoor:   'a handsome young Caucasian male model (age 22-28), adventurous outdoor look',
+    menswear:  'a handsome young Caucasian male model (age 22-28), sharp jawline, confident smile, athletic build',
+    womenswear:'a handsome young Caucasian male model (age 22-28), confident pose',
+    kids:      'a cute Western boy child model (age 6-12)',
+    trendy:    'a cool young Caucasian male streetwear model (age 20-26), urban attitude',
+    vintage:   'a stylish young European male model (age 22-28), vintage charm, warm smile',
+    workwear:  'a polished young Caucasian professional male model (age 25-32), confident business look',
+  },
+  kids: {
+    sport:     'a cute Western child model (age 6-10), energetic playful pose',
+    outdoor:   'a cute Western child model (age 6-10), adventurous outdoor look',
+    menswear:  'a cute Western boy child model (age 6-12)',
+    womenswear:'a cute Western girl child model (age 6-12)',
+    kids:      'a cute Western child model (age 4-10)',
+    trendy:    'a cute Western child model (age 8-12), stylish urban look',
+    vintage:   'a cute Western child model (age 6-12), vintage charm',
+    workwear:  'a cute Western child model (age 8-12)',
+  },
 }
 
-type ImagePart = { type: 'image_url'; image_url: { url: string } }
-type TextPart = { type: 'text'; text: string }
-type ContentPart = ImagePart | TextPart
+// ── Step 1: extract clothing description via vision model ─────────────────────
+async function describeClothing(b64: string, mime: string, isShoes: boolean): Promise<string> {
+  const prompt = isShoes
+    ? 'Describe this shoe in 2-3 sentences for a product photographer: type, colors, materials, key design details. Plain text only.'
+    : 'Describe this clothing item in 2-3 sentences for a fashion photographer: garment type, colors, fabric, fit, key design details. Focus on the clothing only, ignore any person. Plain text only.'
 
-async function generateImage(parts: ContentPart[], model: string): Promise<string | null> {
-  const response = await client.chat.completions.create({
-    model,
-    messages: [{ role: 'user', content: parts as OpenAI.Chat.ChatCompletionContentPart[] }],
+  const res = await client.chat.completions.create({
+    model: 'google/gemini-2.5-flash',
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } },
+        { type: 'text', text: prompt },
+      ] as OpenAI.Chat.ChatCompletionContentPart[],
+    }],
   })
-  const msg = response.choices[0]?.message as unknown as Record<string, unknown>
-  const images = msg?.images as Array<{ image_url: { url: string } }> | undefined
-  return images?.[0]?.image_url?.url ?? null
+  return res.choices[0]?.message?.content?.trim() ?? ''
+}
+
+// ── Step 2: generate image with clothing image as reference ──────────────────
+async function generateFromImageRef(
+  clothingB64: string,
+  clothingMime: string,
+  textPrompt: string,
+  model: string,
+  aspectRatio: string,
+): Promise<string | null> {
+  const params: Record<string, unknown> = {
+    model,
+    messages: [{
+      role: 'user',
+      content: [
+        { type: 'image_url', image_url: { url: `data:${clothingMime};base64,${clothingB64}` } },
+        { type: 'text', text: textPrompt },
+      ],
+    }],
+    image_config: { aspect_ratio: aspectRatio },
+  }
+  const response = await (client.chat.completions.create as (p: unknown) => Promise<unknown>)(params)
+  const msg = response as Record<string, unknown>
+  const images = (msg?.choices as Array<{ message: Record<string, unknown> }>)?.[0]
+    ?.message?.images as Array<{ image_url: { url: string } }> | undefined
+  const url = images?.[0]?.image_url?.url ?? null
+  if (!url) return null
+  if (url.startsWith('data:')) return url
+  try {
+    const r = await fetch(url)
+    const buf = await r.arrayBuffer()
+    const m = r.headers.get('content-type') ?? 'image/jpeg'
+    return `data:${m};base64,${Buffer.from(buf).toString('base64')}`
+  } catch {
+    return url
+  }
 }
 
 const ANALYZE_PROMPT = `Analyze this product image. Return pure JSON only (no markdown):
-{"style":"sport|outdoor|menswear|womenswear|kids|trendy|vintage|workwear","productCategory":"shoes|clothing","colors":["color1"],"keywords":["kw1","kw2"]}`
+{"style":"sport|outdoor|menswear|womenswear|kids|trendy|vintage|workwear","productCategory":"shoes|clothing","colors":["color1"],"keywords":["kw1"]}`
 
 export async function POST(req: NextRequest) {
-  const { clothingBase64, clothingMime, style: inputStyle, backgroundId, productCategory: inputCategory, skipAnalyze } = await req.json()
+  const {
+    clothingBase64, clothingMime,
+    style: inputStyle, backgroundId,
+    productCategory: inputCategory, skipAnalyze,
+    modelGender = 'female',
+    aspectRatio = '3:4',
+  } = await req.json()
 
   if (!clothingBase64) {
     return NextResponse.json({ error: 'No clothing image provided' }, { status: 400 })
   }
 
-  const clothingPart: ContentPart = {
-    type: 'image_url',
-    image_url: { url: `data:${clothingMime ?? 'image/jpeg'};base64,${clothingBase64}` },
-  }
-
-  // If style/category already known (re-generate flow), skip analyze
-  let resolvedStyle = inputStyle ?? 'womenswear'
-  let resolvedCategory = inputCategory ?? 'clothing'
-  let analyzeData: Record<string, unknown> | null = null
-
-  const analyzePromise = skipAnalyze
-    ? Promise.resolve(null)
-    : client.chat.completions.create({
-        model: 'google/gemini-2.5-flash',
-        messages: [{ role: 'user', content: [clothingPart, { type: 'text', text: ANALYZE_PROMPT }] as OpenAI.Chat.ChatCompletionContentPart[] }],
-      }).then(res => {
-        const text = res.choices[0]?.message?.content ?? ''
-        try {
-          const json = JSON.parse(text.trim())
-          resolvedStyle = json.style ?? resolvedStyle
-          resolvedCategory = json.productCategory ?? resolvedCategory
-          analyzeData = json
-        } catch {
-          const m = text.match(/\{[\s\S]*?\}/)
-          if (m) {
-            try {
-              const json = JSON.parse(m[0])
-              resolvedStyle = json.style ?? resolvedStyle
-              resolvedCategory = json.productCategory ?? resolvedCategory
-              analyzeData = json
-            } catch { /* keep defaults */ }
-          }
-        }
-        return analyzeData
-      }).catch(() => null)
-
-  // Use inputCategory if known (re-generate), otherwise default to clothing for prompt
-  // The image model will identify the product type itself from the image
+  const mime = clothingMime ?? 'image/jpeg'
   const isShoes = inputCategory === 'shoes'
-  const styleLabel = STYLE_LABELS[inputStyle ?? 'womenswear'] ?? 'fashion'
-  const styleZhLabel = STYLE_ZH[inputStyle ?? 'womenswear'] ?? '时尚'
+  const styleKey = inputStyle ?? 'womenswear'
+  const styleLabel = STYLE_LABELS[styleKey] ?? 'fashion'
+  const styleZhLabel = STYLE_ZH[styleKey] ?? '时尚'
   const bgScene = BG_SCENES[backgroundId] ?? 'a clean studio with soft white lighting'
-  const modelDesc = MODEL_BY_STYLE[inputStyle ?? 'womenswear'] ?? 'a handsome young Caucasian model (age 25-30)'
+  const modelDesc = (MODEL_BY_GENDER[modelGender] ?? MODEL_BY_GENDER.female)[styleKey]
+    ?? MODEL_BY_GENDER.female.womenswear
 
-  const imagePrompt = isShoes
-    ? `Professional shoe product photo. Extract exact shoe design/colors/materials from input. NO person or body parts. Place shoes on: ${bgScene}. Arrange naturally, slightly angled. Professional lighting, soft shadows. High-quality commercial product photo.`
-    : `Professional ${styleLabel} fashion photo. IGNORE any person in input image — extract clothing design/colors/patterns/cut only. New virtual model: ${modelDesc}, Western/European, age 25-30, NOT Asian. Model wears EXACTLY the extracted clothing. Background: ${bgScene}. Photorealistic full-body or 3/4 shot, fashion editorial quality.`
+  console.log('[tryon] start — style:', styleKey, 'shoes:', isShoes, 'gender:', modelGender, 'ratio:', aspectRatio)
 
-  const textPrompt = isShoes
-    ? `分析这双鞋的设计特点、材质工艺和适合场景。返回纯JSON（无markdown代码块）：{"description":"100字内专业鞋款描述，突出设计亮点和穿着场景","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`
-    : `分析这件${styleZhLabel}服装的上身效果、版型特点和适合人群。返回纯JSON（无markdown代码块）：{"description":"100字内专业上身效果描述","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`
+  // ── Run all three in parallel: describe, analyze, text-analysis ───────────
+  const [clothingDesc, analyzeRes, textRes] = await Promise.all([
+    // 1. Describe clothing for image gen prompt
+    describeClothing(clothingBase64, mime, isShoes).catch(e => {
+      console.error('[tryon] describe failed:', e?.message)
+      return ''
+    }),
 
-  const [imageRes, textRes] = await Promise.allSettled([
-    Promise.race([
-      generateImage(
-        [clothingPart, { type: 'text', text: imagePrompt }],
-        'google/gemini-2.5-flash-image',
-      ),
-      generateImage(
-        [clothingPart, { type: 'text', text: imagePrompt }],
-        'google/gemini-3.1-flash-image-preview',
-      ),
-    ]),
+    // 2. Analyze style/category (skip if already known)
+    skipAnalyze ? Promise.resolve(null) : client.chat.completions.create({
+      model: 'google/gemini-2.5-flash',
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mime};base64,${clothingBase64}` } },
+          { type: 'text', text: ANALYZE_PROMPT },
+        ] as OpenAI.Chat.ChatCompletionContentPart[],
+      }],
+    }).catch(() => null),
+
+    // 3. Generate text description for UI
     client.chat.completions.create({
       model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: [clothingPart, { type: 'text', text: textPrompt }] as OpenAI.Chat.ChatCompletionContentPart[] }],
-    }),
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'image_url', image_url: { url: `data:${mime};base64,${clothingBase64}` } },
+          {
+            type: 'text',
+            text: isShoes
+              ? `分析这双鞋的设计特点和适合场景。返回纯JSON（无markdown）：{"description":"80字内专业描述","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`
+              : `分析这件${styleZhLabel}服装的版型特点和适合人群。返回纯JSON（无markdown）：{"description":"80字内专业描述","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`,
+          },
+        ] as OpenAI.Chat.ChatCompletionContentPart[],
+      }],
+    }).catch(() => null),
   ])
 
-  // Wait for analyze to finish (it was running in parallel)
-  await analyzePromise
+  console.log('[tryon] describe result:', clothingDesc.slice(0, 80))
 
-  const generatedImageUrl = imageRes.status === 'fulfilled' ? imageRes.value : null
+  // ── Build image gen prompt ────────────────────────────────────────────────
+  const desc = clothingDesc || (isShoes ? 'a stylish shoe' : `a ${styleLabel} clothing item`)
+  const imagePrompt = isShoes
+    ? `Professional product photography. The input image shows the exact shoe to photograph — reproduce its design, colors, materials, and branding EXACTLY with no changes. Setting: ${bgScene}. No person, no body parts. Slightly angled view, professional lighting, soft shadows. High-end retail catalog style. Photorealistic.`
+    : `Professional ${styleLabel} fashion photo. ${modelDesc}. The model is wearing EXACTLY the clothing item shown in the input image — same garment type, same colors, same cut, same patterns, same logos, same details. Do NOT change or substitute any part of the clothing. Background: ${bgScene}. Full-body or 3/4 shot. High-end fashion campaign, photorealistic, sharp focus.`
 
+  console.log('[tryon] image prompt (first 120):', imagePrompt.slice(0, 120))
+
+  // ── Generate image (race two models, both receive the clothing image) ──────
+  const generatedImageUrl = await Promise.race([
+    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-2.5-flash-image', aspectRatio),
+    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-3.1-flash-image-preview', aspectRatio),
+  ]).catch(e => { console.error('[tryon] image gen failed:', e?.message); return null })
+
+  console.log('[tryon] done — has image:', !!generatedImageUrl)
+
+  // ── Parse analyze result ──────────────────────────────────────────────────
+  let analyzeData: Record<string, unknown> | null = null
+  if (analyzeRes) {
+    const text = analyzeRes.choices[0]?.message?.content ?? ''
+    try { analyzeData = JSON.parse(text.trim()) } catch {
+      const m = text.match(/\{[\s\S]*?\}/)
+      if (m) try { analyzeData = JSON.parse(m[0]) } catch { /* ignore */ }
+    }
+  }
+
+  // ── Parse text description ────────────────────────────────────────────────
   let analysis = { description: '', fitScore: 80, styleMatch: '', occasion: '' }
-  if (textRes.status === 'fulfilled') {
-    const text = textRes.value.choices[0]?.message?.content ?? ''
-    try {
-      analysis = JSON.parse(text.trim())
-    } catch {
-      const match = text.match(/\{[\s\S]*?\}/)
-      if (match) {
-        try { analysis = JSON.parse(match[0]) } catch { analysis.description = text.slice(0, 200) }
-      } else {
+  if (textRes) {
+    const text = textRes.choices[0]?.message?.content ?? ''
+    try { analysis = { ...analysis, ...JSON.parse(text.trim()) } } catch {
+      const m = text.match(/\{[\s\S]*?\}/)
+      if (m) try { analysis = { ...analysis, ...JSON.parse(m[0]) } } catch {
         analysis.description = text.slice(0, 200)
       }
     }
