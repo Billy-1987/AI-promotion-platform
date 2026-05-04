@@ -100,63 +100,76 @@ const CATEGORY_COLORS: Record<Category, string> = {
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
-// Client-side image URL cache
+// Client-side image URL cache — keyed by `topic:variant`
 const imageCache: Record<string, string | null> = {}
+
+async function fetchVariant(topic: string, variant: number): Promise<string | null> {
+  const key = `${topic}:${variant}`
+  if (imageCache[key] !== undefined) return imageCache[key]
+  try {
+    const res = await fetch(`/api/templates?topic=${encodeURIComponent(topic)}&variant=${variant}`)
+    const data = await res.json()
+    const url: string | null = data.url ?? null
+    imageCache[key] = url
+    return url
+  } catch {
+    return null
+  }
+}
 
 function TemplateCard({
   item,
   onClick,
 }: {
   item: TemplateItem
-  onClick: (item: TemplateItem, imageUrl: string | null) => void
+  onClick: (item: TemplateItem, urls: [string | null, string | null]) => void
 }) {
-  const [imageUrl, setImageUrl] = useState<string | null>(null)
-  const [loading, setLoading] = useState(true)
+  const [url0, setUrl0] = useState<string | null>(null)
+  const [loading, setLoading] = useState(false)
+  const [visible, setVisible] = useState(false)
+  const cardRef = useRef<HTMLDivElement>(null)
+
+  // IntersectionObserver — only start loading when card enters viewport
+  useEffect(() => {
+    const el = cardRef.current
+    if (!el) return
+    const obs = new IntersectionObserver(
+      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect() } },
+      { rootMargin: '200px' }
+    )
+    obs.observe(el)
+    return () => obs.disconnect()
+  }, [])
 
   useEffect(() => {
+    if (!visible) return
     let cancelled = false
-    async function load() {
-      const cached = imageCache[item.searchTopic]
-      if (cached !== undefined) {
-        setImageUrl(cached)
-        setLoading(false)
-        return
-      }
-      try {
-        const res = await fetch(`/api/templates?topic=${encodeURIComponent(item.searchTopic)}`)
-        const data = await res.json()
-        const url: string | null = data.url ?? null
-        if (!cancelled) {
-          imageCache[item.searchTopic] = url
-          setImageUrl(url)
-        }
-      } catch {
-        if (!cancelled) setImageUrl(null)
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
+    setLoading(true)
+    fetchVariant(item.searchTopic, 0).then(v0 => {
+      if (!cancelled) { setUrl0(v0); setLoading(false) }
+    })
     return () => { cancelled = true }
-  }, [item.searchTopic])
+  }, [visible, item.searchTopic])
 
   const colorClass = CATEGORY_COLORS[item.category]
 
   return (
     <div
+      ref={cardRef}
       className="group bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col"
-      onClick={() => onClick(item, imageUrl)}
+      onClick={() => onClick(item, [url0, null])}
     >
-      <div className="aspect-[3/4] bg-slate-100 relative overflow-hidden">
+      {/* 16:9 thumbnail */}
+      <div className="aspect-video bg-slate-100 relative overflow-hidden">
         {loading ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
             <span className="w-6 h-6 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
             <span className="text-xs">AI 生成中...</span>
           </div>
-        ) : imageUrl ? (
+        ) : url0 ? (
           <>
             <img
-              src={imageUrl}
+              src={url0}
               alt={item.title}
               className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
             />
@@ -166,7 +179,7 @@ function TemplateCard({
               </span>
             </div>
           </>
-        ) : (
+        ) : !visible ? null : (
           <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 gap-2">
             <span className="text-3xl">🎨</span>
             <span className="text-xs">生成失败</span>
@@ -186,24 +199,55 @@ function TemplateCard({
 
 function PreviewModal({
   item,
-  imageUrl,
+  imageUrls: initialUrls,
   username,
   onClose,
 }: {
   item: TemplateItem
-  imageUrl: string | null
+  imageUrls: [string | null, string | null]
   username?: string
   onClose: () => void
 }) {
+  const [activeVariant, setActiveVariant] = useState(0)
+  // Start with whatever variant 0 we already have; lazy-load variant 1 on open
+  const [imageUrls, setImageUrls] = useState<[string | null, string | null]>(initialUrls)
+  const [loadingV1, setLoadingV1] = useState(false)
+
+  const imageUrl = imageUrls[activeVariant] ?? imageUrls[0]
+
+  // Load variant 1 in background when modal opens
+  useEffect(() => {
+    if (imageUrls[1]) return
+    let cancelled = false
+    setLoadingV1(true)
+    fetchVariant(item.searchTopic, 1).then(v1 => {
+      if (!cancelled) {
+        setImageUrls(prev => [prev[0], v1])
+        setLoadingV1(false)
+      }
+    })
+    return () => { cancelled = true }
+  }, [item.searchTopic]) // eslint-disable-line react-hooks/exhaustive-deps
+
   const [withLogo, setWithLogo] = useState(false)
   const [compositing, setCompositing] = useState(false)
   const [compositedUrl, setCompositedUrl] = useState<string | null>(null)
-  const [logoPos, setLogoPos] = useState({ x: 0.5, y: 0.92 }) // 相对位置 (0-1)
+  const [logoPos, setLogoPos] = useState({ x: 0.5, y: 0.92 })
   const [dragging, setDragging] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const posterImgRef = useRef<HTMLImageElement | null>(null)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
+
+  // Reset logo state when switching variants
+  function switchVariant(v: number) {
+    setActiveVariant(v)
+    setWithLogo(false)
+    setCompositedUrl(null)
+    posterImgRef.current = null
+    logoImgRef.current = null
+    setLogoPos({ x: 0.5, y: 0.92 })
+  }
 
   function loadImage(src: string): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
@@ -364,12 +408,33 @@ function PreviewModal({
             <h3 className="text-lg font-bold text-slate-800">{item.title}</h3>
             {item.date && <span className="text-sm text-slate-500">{item.date}</span>}
           </div>
-          <button
-            onClick={onClose}
-            className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100"
-          >
-            ×
-          </button>
+          <div className="flex items-center gap-3">
+            {/* Variant switcher — always show, show spinner while v1 loading */}
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+              <button
+                onClick={() => switchVariant(0)}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${activeVariant === 0 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                style={activeVariant === 0 ? { background: '#0034cc' } : {}}
+              >
+                款式一
+              </button>
+              <button
+                onClick={() => { if (imageUrls[1]) switchVariant(1) }}
+                disabled={!imageUrls[1]}
+                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${activeVariant === 1 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'}`}
+                style={activeVariant === 1 ? { background: '#0034cc' } : {}}
+              >
+                {loadingV1 && <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />}
+                款式二
+              </button>
+            </div>
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100"
+            >
+              ×
+            </button>
+          </div>
         </div>
 
         {/* Main image */}
@@ -475,13 +540,13 @@ function PreviewModal({
 function TemplatesContent() {
   const { user, logout } = useAuth()
   const [category, setCategory] = useState<Category>('全部')
-  const [preview, setPreview] = useState<{ item: TemplateItem; imageUrl: string | null } | null>(null)
+  const [preview, setPreview] = useState<{ item: TemplateItem; imageUrls: [string | null, string | null] } | null>(null)
 
   const categories: Category[] = ['全部', '节日', '节气', '促销', '通用']
   const filtered = category === '全部' ? TEMPLATES : TEMPLATES.filter(t => t.category === category)
 
-  const handleCardClick = useCallback((item: TemplateItem, imageUrl: string | null) => {
-    setPreview({ item, imageUrl })
+  const handleCardClick = useCallback((item: TemplateItem, urls: [string | null, string | null]) => {
+    setPreview({ item, imageUrls: urls })
   }, [])
 
   return (
@@ -568,7 +633,7 @@ function TemplatesContent() {
       {preview && (
         <PreviewModal
           item={preview.item}
-          imageUrl={preview.imageUrl}
+          imageUrls={preview.imageUrls}
           username={user?.username}
           onClose={() => setPreview(null)}
         />

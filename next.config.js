@@ -1,6 +1,9 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   output: 'standalone',
+  // Extend server-side HTTP timeout for long-running AI generation routes (Docker/self-hosted)
+  serverExternalPackages: [],
+  httpAgentOptions: { keepAlive: true },
   images: {
     remotePatterns: [
       { protocol: 'https', hostname: 'picsum.photos' },

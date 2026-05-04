@@ -32,8 +32,8 @@ interface GeneratedImage {
 
 interface HistoryItem {
   id: string
-  url: string       // 缩略图（128px），用于历史列表展示
-  fullUrl?: string  // 原图 URL，点击时恢复到主视图
+  url: string
+  fullUrl?: string
   prompt: string
   style: string
   ratio: string
@@ -1061,7 +1061,7 @@ export default function ImageDesignStudio() {
           {history.map(item => (
             <div key={item.id} className="relative group flex-shrink-0">
               <button
-                onClick={() => openDetail(item.fullUrl ?? item.url, item.prompt, item.style, item.ratio)}
+                onClick={() => openDetail(item.url, item.prompt, item.style, item.ratio)}
                 className="w-full rounded-xl overflow-hidden block"
               >
                 <img src={item.url} alt="" className="w-full aspect-square object-cover rounded-xl hover:opacity-90 transition-opacity" />
