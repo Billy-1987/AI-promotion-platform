@@ -83,7 +83,7 @@ function safeFilename(topic: string, variant: number) {
 
 async function generatePoster(scene: string, variant: number): Promise<string | null> {
   const variantStyle = VARIANT_STYLE[variant] ?? VARIANT_STYLE[0]
-  const fullPrompt = `Create a 16:9 widescreen horizontal promotional poster. Scene: ${scene}. Style: ${variantStyle}. Fill the entire canvas edge to edge. No text, no typography, no words. High quality, professional design.`
+  const fullPrompt = `Create a 9:16 vertical portrait poster image for a Chinese retail promotion. Scene: ${scene}. Style: ${variantStyle}. Fill the entire canvas edge to edge with the illustration. CRITICAL REQUIREMENT: Do NOT include any text, words, letters, numbers, Chinese characters, typography, captions, labels, logos, or watermarks anywhere in the image. The image must be 100% text-free — pure visual scene only. High quality, professional photography or illustration style.`
 
   const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST',
@@ -97,7 +97,7 @@ async function generatePoster(scene: string, variant: number): Promise<string | 
       model: 'google/gemini-2.5-flash-image',
       messages: [{ role: 'user', content: fullPrompt }],
       modalities: ['image'],
-      image_config: { aspect_ratio: '16:9' },
+      image_config: { aspect_ratio: '9:16' },
     }),
   })
 
@@ -114,6 +114,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url)
   const topic = searchParams.get('topic') || ''
   const variant = parseInt(searchParams.get('variant') ?? '0', 10)
+  const force = searchParams.get('force') === '1'
 
   if (!OPENROUTER_KEY) {
     return NextResponse.json({ url: null, error: 'Missing OPENROUTER_API_KEY' }, { status: 500 })
@@ -124,10 +125,12 @@ export async function GET(req: NextRequest) {
   const publicUrl = `/generated/${filename}`
 
   // Cache hit — file already exists on disk (persisted Docker volume)
-  try {
-    await access(filepath)
-    return NextResponse.json({ url: publicUrl })
-  } catch { /* not cached yet */ }
+  if (!force) {
+    try {
+      await access(filepath)
+      return NextResponse.json({ url: publicUrl })
+    } catch { /* not cached yet */ }
+  }
 
   const entry = PROMPT_MAP[topic]
   const scene = entry?.scene ?? `promotional poster for "${topic}", beautiful illustration style, festive atmosphere`

@@ -103,11 +103,13 @@ const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '�
 // Client-side image URL cache — keyed by `topic:variant`
 const imageCache: Record<string, string | null> = {}
 
-async function fetchVariant(topic: string, variant: number): Promise<string | null> {
+async function fetchVariant(topic: string, variant: number, force = false): Promise<string | null> {
   const key = `${topic}:${variant}`
-  if (imageCache[key] !== undefined) return imageCache[key]
+  if (!force && imageCache[key] !== undefined) return imageCache[key]
   try {
-    const res = await fetch(`/api/templates?topic=${encodeURIComponent(topic)}&variant=${variant}`)
+    const params = new URLSearchParams({ topic, variant: String(variant) })
+    if (force) params.set('force', '1')
+    const res = await fetch(`/api/templates?${params}`)
     const data = await res.json()
     const url: string | null = data.url ?? null
     imageCache[key] = url
@@ -159,8 +161,8 @@ function TemplateCard({
       className="group bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col"
       onClick={() => onClick(item, [url0, null])}
     >
-      {/* 16:9 thumbnail */}
-      <div className="aspect-video bg-slate-100 relative overflow-hidden">
+      {/* 9:16 thumbnail */}
+      <div className="aspect-[9/16] bg-slate-100 relative overflow-hidden">
         {loading ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-slate-400">
             <span className="w-6 h-6 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
@@ -212,8 +214,23 @@ function PreviewModal({
   // Start with whatever variant 0 we already have; lazy-load variant 1 on open
   const [imageUrls, setImageUrls] = useState<[string | null, string | null]>(initialUrls)
   const [loadingV1, setLoadingV1] = useState(false)
+  const [regenerating, setRegenerating] = useState(false)
 
   const imageUrl = imageUrls[activeVariant] ?? imageUrls[0]
+
+  async function handleRegenerate() {
+    setRegenerating(true)
+    handleRemoveLogo()
+    const newUrl = await fetchVariant(item.searchTopic, activeVariant, true)
+    if (newUrl) {
+      setImageUrls(prev => {
+        const next: [string | null, string | null] = [prev[0], prev[1]]
+        next[activeVariant] = newUrl
+        return next
+      })
+    }
+    setRegenerating(false)
+  }
 
   // Load variant 1 in background when modal opens
   useEffect(() => {
@@ -238,6 +255,19 @@ function PreviewModal({
   const previewRef = useRef<HTMLDivElement>(null)
   const posterImgRef = useRef<HTMLImageElement | null>(null)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
+
+  // Auto-save to gallery when image becomes available
+  useEffect(() => {
+    if (!imageUrl || !username) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        const dataUrl = await urlToDataUrl(imageUrl)
+        if (!cancelled) await saveToGallery({ dataUrl, filename: `${item.title}.png`, source: 'template' }, username)
+      } catch { /* non-fatal */ }
+    })()
+    return () => { cancelled = true }
+  }, [imageUrl, username]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Reset logo state when switching variants
   function switchVariant(v: number) {
@@ -380,7 +410,7 @@ function PreviewModal({
     // 同步存入图库
     try {
       const dataUrl = await urlToDataUrl(src)
-      saveToGallery({ dataUrl, filename, source: 'template' }, username)
+      await saveToGallery({ dataUrl, filename, source: 'template' }, username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
@@ -428,6 +458,20 @@ function PreviewModal({
                 款式二
               </button>
             </div>
+            {/* 换一张 */}
+            <button
+              onClick={handleRegenerate}
+              disabled={regenerating}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+            >
+              {regenerating
+                ? <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
+                : <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                  </svg>
+              }
+              换一张
+            </button>
             <button
               onClick={onClose}
               className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100"
@@ -537,13 +581,23 @@ function PreviewModal({
   )
 }
 
+const PAGE_SIZE = 12
+
 function TemplatesContent() {
   const { user, logout } = useAuth()
   const [category, setCategory] = useState<Category>('全部')
+  const [page, setPage] = useState(1)
   const [preview, setPreview] = useState<{ item: TemplateItem; imageUrls: [string | null, string | null] } | null>(null)
 
   const categories: Category[] = ['全部', '节日', '节气', '促销', '通用']
   const filtered = category === '全部' ? TEMPLATES : TEMPLATES.filter(t => t.category === category)
+  const totalPages = Math.ceil(filtered.length / PAGE_SIZE)
+  const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
+
+  function handleCategoryChange(c: Category) {
+    setCategory(c)
+    setPage(1)
+  }
 
   const handleCardClick = useCallback((item: TemplateItem, urls: [string | null, string | null]) => {
     setPreview({ item, imageUrls: urls })
@@ -611,7 +665,7 @@ function TemplatesContent() {
             {categories.map(c => (
               <button
                 key={c}
-                onClick={() => setCategory(c)}
+                onClick={() => handleCategoryChange(c)}
                 className={`px-4 py-1.5 text-sm font-medium rounded-md transition-colors ${
                   category === c ? 'text-white' : 'text-slate-500 hover:text-slate-800'
                 }`}
@@ -623,11 +677,45 @@ function TemplatesContent() {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
-          {filtered.map(item => (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+          {paged.map(item => (
             <TemplateCard key={item.id} item={item} onClick={handleCardClick} />
           ))}
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-center gap-2 mt-8">
+            <button
+              onClick={() => setPage(p => Math.max(1, p - 1))}
+              disabled={page === 1}
+              className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              上一页
+            </button>
+            {Array.from({ length: totalPages }, (_, i) => i + 1).map(n => (
+              <button
+                key={n}
+                onClick={() => setPage(n)}
+                className={`w-8 h-8 text-sm rounded-lg border transition-colors ${
+                  n === page
+                    ? 'text-white border-transparent'
+                    : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                }`}
+                style={n === page ? { background: '#0034cc', borderColor: '#0034cc' } : {}}
+              >
+                {n}
+              </button>
+            ))}
+            <button
+              onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+              disabled={page === totalPages}
+              className="px-3 py-1.5 text-sm rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              下一页
+            </button>
+          </div>
+        )}
       </main>
 
       {preview && (

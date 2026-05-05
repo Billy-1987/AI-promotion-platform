@@ -14,11 +14,11 @@ const STYLE_OPTIONS = [
 ]
 
 const RATIO_OPTIONS = [
+  { value: '9:16', label: '9:16', w: 9, h: 16 },
   { value: '1:1', label: '1:1', w: 1, h: 1 },
   { value: '4:3', label: '4:3', w: 4, h: 3 },
   { value: '3:4', label: '3:4', w: 3, h: 4 },
   { value: '16:9', label: '16:9', w: 16, h: 9 },
-  { value: '9:16', label: '9:16', w: 9, h: 16 },
 ]
 
 const COUNT_OPTIONS = [1, 2, 4]
@@ -148,7 +148,7 @@ export default function ImageDesignStudio() {
   // Basic settings
   const [prompt, setPrompt] = useState('')
   const [style, setStyle] = useState('realistic')
-  const [ratio, setRatio] = useState('1:1')
+  const [ratio, setRatio] = useState('9:16')
   const [count, setCount] = useState(1)
 
   // Reference images (multi)
@@ -202,14 +202,13 @@ export default function ImageDesignStudio() {
 
   // ── Reference image handlers ──────────────────────────────────
   function handleRefFile(file: File) {
-    if (refImages.length >= 4) return // max 4 reference images
+    if (refImages.length >= 4) return
     const reader = new FileReader()
     reader.onload = e => {
       const dataUrl = e.target?.result as string
-      const img = new window.Image()
-      img.onload = () => {
-        const MAX = 1024
-        let { width, height } = img
+      const MAX = 1024
+      createImageBitmap(file).then(bitmap => {
+        let { width, height } = bitmap
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round(height * MAX / width); width = MAX }
           else { width = Math.round(width * MAX / height); height = MAX }
@@ -217,11 +216,28 @@ export default function ImageDesignStudio() {
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
-        canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+        canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height)
+        bitmap.close()
         const compressed = canvas.toDataURL('image/jpeg', 0.85)
         setRefImages(prev => [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }])
-      }
-      img.src = dataUrl
+      }).catch(() => {
+        // fallback: use dataUrl directly via Image element
+        const img = new window.Image()
+        img.onload = () => {
+          let { width, height } = img
+          if (width > MAX || height > MAX) {
+            if (width > height) { height = Math.round(height * MAX / width); width = MAX }
+            else { width = Math.round(width * MAX / height); height = MAX }
+          }
+          const canvas = document.createElement('canvas')
+          canvas.width = width
+          canvas.height = height
+          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+          const compressed = canvas.toDataURL('image/jpeg', 0.85)
+          setRefImages(prev => [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }])
+        }
+        img.src = dataUrl
+      })
     }
     reader.readAsDataURL(file)
   }
@@ -262,7 +278,7 @@ export default function ImageDesignStudio() {
           referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
         }),
       })
-      if (!res.ok) throw new Error('生成失败，请重试')
+      if (!res.ok) throw new Error(`生成失败（${res.status}），请重试`)
       const data = await res.json()
       if (!data.images?.length) throw new Error('未生成图片，请修改提示词后重试')
       setImages(data.images)
@@ -270,41 +286,35 @@ export default function ImageDesignStudio() {
       if (data.texts?.length) {
         setTextOverlays(data.texts.map((t: TextOverlay) => ({ ...t, locked: true })))
       }
-      // Save to history — 生成缩略图（128px）存入历史，避免 localStorage 超限
-      const newItems: HistoryItem[] = await Promise.all(
-        data.images.map(async (img: GeneratedImage) => {
-          let thumbUrl = ''
-          try {
-            // Convert data URL to blob, then use createImageBitmap for reliable decoding
-            const res = await fetch(img.url)
-            const blob = await res.blob()
-            const bitmap = await createImageBitmap(blob)
-            const canvas = document.createElement('canvas')
-            const scale = 96 / bitmap.width
-            canvas.width = 96
-            canvas.height = Math.round(bitmap.height * scale)
-            canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
-            bitmap.close()
-            thumbUrl = canvas.toDataURL('image/jpeg', 0.3)
-          } catch (e) {
-            console.error('Thumbnail generation failed', e)
-          }
-          if (!thumbUrl) return null
-          // Persist full-res image to IndexedDB
-          await idbPut(img.id, img.url)
-          return {
-            id: img.id,
-            url: thumbUrl,
-            prompt: usePrompt.trim(),
-            style: useStyle,
-            ratio: useRatio,
-            createdAt: Date.now(),
-          }
-        })
-      ).then(items => items.filter(Boolean) as HistoryItem[])
-      const updated = [...newItems, ...loadHistory()].slice(0, HISTORY_MAX)
-      saveHistory(updated)
-      setHistory(updated)
+      // Save to history and gallery — isolated so failures don't affect the generated result
+      ;(async () => {
+        try {
+          const newItems: HistoryItem[] = (await Promise.all(
+            (data.images as GeneratedImage[]).map(async (img) => {
+              let thumbUrl = ''
+              try {
+                const blob = await fetch(img.url).then(r => r.blob())
+                const bitmap = await createImageBitmap(blob)
+                const canvas = document.createElement('canvas')
+                const scale = 96 / bitmap.width
+                canvas.width = 96
+                canvas.height = Math.round(bitmap.height * scale)
+                canvas.getContext('2d')!.drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+                bitmap.close()
+                thumbUrl = canvas.toDataURL('image/jpeg', 0.3)
+              } catch { /* thumbnail failure is non-fatal */ }
+              if (!thumbUrl) return null
+              await idbPut(img.id, img.url)
+              // Auto-save to gallery
+              try { await saveToGallery({ dataUrl: img.url, filename: `ai-design-${img.id}.jpg`, source: 'image-design' }, user?.username) } catch { /* non-fatal */ }
+              return { id: img.id, url: thumbUrl, prompt: usePrompt.trim(), style: useStyle, ratio: useRatio, createdAt: Date.now() }
+            })
+          )).filter(Boolean) as HistoryItem[]
+          const updated = [...newItems, ...loadHistory()].slice(0, HISTORY_MAX)
+          saveHistory(updated)
+          setHistory(updated)
+        } catch { /* history save failure is non-fatal */ }
+      })()
     } catch (e) {
       setError(e instanceof Error ? e.message : '生成失败')
     } finally {
@@ -520,7 +530,7 @@ export default function ImageDesignStudio() {
     a.click()
     document.body.removeChild(a)
     try {
-      saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
+      await saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
@@ -1164,7 +1174,7 @@ export default function ImageDesignStudio() {
                     try {
                       const { urlToDataUrl, saveToGallery } = await import('@/lib/gallery')
                       const dataUrl = await urlToDataUrl(detailImage!)
-                      saveToGallery({ dataUrl, filename: a.download, source: 'image-design' }, user?.username)
+                      await saveToGallery({ dataUrl, filename: a.download, source: 'image-design' }, user?.username)
                     } catch {}
                   }}
                   className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium flex items-center justify-center gap-2"
