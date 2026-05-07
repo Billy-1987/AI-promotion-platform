@@ -9,8 +9,8 @@ import Logo from './Logo'
 const ROLE_LABEL = { hq: '总部市场部', regional: '区域运营' }
 
 export default function TryOnStudio() {
-  const { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset } = useTryOn()
   const { user, logout } = useAuth()
+  const { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset } = useTryOn(user?.username)
 
   const isShoes = state.analysis?.productCategory === 'shoes'
 

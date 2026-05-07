@@ -3,8 +3,9 @@
 import { useState, useCallback } from 'react'
 import { TryOnState, TryOnResult, StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
 import { suggestBackgrounds, generateTryOn } from '@/lib/mockAI'
+import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 
-export function useTryOn() {
+export function useTryOn(username?: string) {
   const [state, setState] = useState<TryOnState>({
     status: 'idle',
     modelPhotoFile: null,
@@ -80,6 +81,15 @@ export function useTryOn() {
         state.aspectRatio,
       )
       setState(prev => ({ ...prev, status: 'result', resultUrl: result.previewUrl, tryOnResult: result }))
+      // Auto-save to gallery
+      if (result.previewUrl) {
+        ;(async () => {
+          try {
+            const dataUrl = await urlToDataUrl(result.previewUrl)
+            await saveToGallery({ dataUrl, filename: `tryon-${Date.now()}.jpg`, source: 'tryon' }, username)
+          } catch { /* non-fatal */ }
+        })()
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : '生成失败，请重试'
       setGenerateError(msg)

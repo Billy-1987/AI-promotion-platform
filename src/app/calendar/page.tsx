@@ -19,13 +19,28 @@ interface BrandRow {
   brand: string
   [key: string]: unknown
 }
+interface RecommendItem {
+  week: string
+  month: number
+  title: string
+  brand: string
+  spu: string
+  itemNo: string
+  tagPrice: number
+  salePrice: number
+  coverage: number
+  sellingPoints: string
+  remark: string
+  imageUrl: string | null
+}
 interface CalendarMeta {
   uploaded: boolean
   filename?: string
   uploadedAt?: string
   summary?: WeekEntry[]
   allRows?: BrandRow[]
-  headers?: string[] // Excel 第5列起的真实表头
+  headers?: string[]
+  items?: RecommendItem[]
 }
 
 function CalendarContent() {
@@ -35,6 +50,8 @@ function CalendarContent() {
   const [uploadMsg, setUploadMsg] = useState('')
   const [dragging, setDragging] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null)
+  const [recommendWeek, setRecommendWeek] = useState<string | null>(null)
+  const [recommendBrand, setRecommendBrand] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isHQ = user?.role === 'hq'
@@ -42,6 +59,10 @@ function CalendarContent() {
 
   const brandRows = selectedBrand
     ? (meta?.allRows ?? []).filter(r => r.brand === selectedBrand)
+    : []
+
+  const recommendItems = recommendWeek
+    ? (meta?.items ?? []).filter(r => r.week === recommendWeek)
     : []
 
   useEffect(() => { fetchMeta() }, [])
@@ -246,19 +267,47 @@ function CalendarContent() {
               </div>
             ) : (
               <div className="space-y-4">
-                {meta.summary?.map((entry, idx) => (
-                  <WeekCard
-                    key={entry.week}
-                    entry={entry}
-                    currentWeek={idx === 0 ? currentWeek : undefined}
-                    onBrandClick={setSelectedBrand}
-                  />
-                ))}
+                {meta.summary?.map((entry, idx) => {
+                  const weekItems = (meta.items ?? []).filter(i => i.week === entry.week)
+                  const itemBrands = new Set(weekItems.map(i => i.brand).filter(Boolean))
+                  const itemBrandCount = new Map<string, number>()
+                  for (const item of weekItems) {
+                    if (item.brand) itemBrandCount.set(item.brand, (itemBrandCount.get(item.brand) ?? 0) + 1)
+                  }
+                  return (
+                    <WeekCard
+                      key={entry.week}
+                      entry={entry}
+                      currentWeek={idx === 0 ? currentWeek : undefined}
+                      onBrandClick={(week, brand) => {
+                        setRecommendWeek(week)
+                        setRecommendBrand(brand)
+                      }}
+                      onRecommendClick={(week) => {
+                        setRecommendWeek(week)
+                        setRecommendBrand(null)
+                      }}
+                      hasRecommend={weekItems.length > 0}
+                      itemBrands={itemBrands}
+                      itemBrandCount={itemBrandCount}
+                    />
+                  )
+                })}
               </div>
             )}
           </>
         )}
       </main>
+
+      {/* 单款推荐抽屉 */}
+      {recommendWeek && (
+        <RecommendDrawer
+          week={recommendWeek}
+          items={recommendItems}
+          initialBrand={recommendBrand}
+          onClose={() => { setRecommendWeek(null); setRecommendBrand(null) }}
+        />
+      )}
     </div>
   )
 }
@@ -278,7 +327,15 @@ const BRAND_COLORS = [
   { bg: 'bg-fuchsia-900/50', border: 'border-fuchsia-700', text: 'text-fuchsia-200', badge: 'bg-fuchsia-700 text-fuchsia-100' },
 ]
 
-function WeekCard({ entry, currentWeek, onBrandClick }: { entry: WeekEntry; currentWeek?: string; onBrandClick: (brand: string) => void }) {
+function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecommend, itemBrands, itemBrandCount }: {
+  entry: WeekEntry
+  currentWeek?: string
+  onBrandClick: (week: string, brand: string) => void
+  onRecommendClick: (week: string) => void
+  hasRecommend: boolean
+  itemBrands: Set<string>
+  itemBrandCount: Map<string, number>
+}) {
   return (
     <div className="flex gap-3 items-start">
       {/* 当前周标签 */}
@@ -299,24 +356,182 @@ function WeekCard({ entry, currentWeek, onBrandClick }: { entry: WeekEntry; curr
           <span className="px-3 py-1 text-white text-sm font-bold rounded-lg" style={{ background: '#0034cc' }}>{entry.week}</span>
           <span className="text-slate-500 text-sm">{entry.month} 月</span>
           <span className="text-slate-800 font-semibold text-base flex-1">{entry.title}</span>
-          <span className="text-slate-400 text-sm">{entry.brands.length} 个品牌 · {entry.brands.reduce((s, b) => s + b.count, 0)} 款</span>
+          <span className="text-slate-400 text-sm shrink-0">{entry.brands.length} 个品牌 · {Array.from(itemBrandCount.values()).reduce((s, n) => s + n, 0) || entry.brands.reduce((s, b) => s + b.count, 0)} 款</span>
+          {hasRecommend && (
+            <button
+              onClick={() => onRecommendClick(entry.week)}
+              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors hover:shadow-sm"
+              style={{ background: 'rgba(252,234,66,0.12)', borderColor: 'rgba(252,234,66,0.5)', color: '#92400e' }}
+            >
+              <span>⭐</span> 单款推荐
+            </button>
+          )}
         </div>
         <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {entry.brands.map((b, i) => {
             const c = BRAND_COLORS[i % BRAND_COLORS.length]
+            const hasItems = itemBrands.has(b.name)
             return (
               <button
                 key={b.name}
-                onClick={() => onBrandClick(b.name)}
-                className={`flex items-center justify-between ${c.bg} border ${c.border} rounded-lg px-3 py-2 transition-all hover:scale-105 hover:shadow-lg cursor-pointer`}
+                onClick={() => onBrandClick(entry.week, b.name)}
+                className={`flex items-center justify-between ${c.bg} border ${c.border} rounded-lg px-3 py-2 transition-all hover:scale-105 hover:shadow-lg cursor-pointer relative`}
               >
                 <span className={`text-sm font-medium truncate ${c.text}`}>{b.name}</span>
-                <span className={`ml-2 text-xs px-1.5 py-0.5 rounded shrink-0 ${c.badge}`}>{b.count} 款</span>
+                <div className="flex items-center gap-1 ml-2 shrink-0">
+                  {hasItems && <span className="text-xs">⭐</span>}
+                  <span className={`text-xs px-1.5 py-0.5 rounded ${c.badge}`}>{itemBrandCount.get(b.name) ?? b.count} 款</span>
+                </div>
               </button>
             )
           })}
         </div>
       </div>
+    </div>
+  )
+}
+
+function RecommendDrawer({ week, items, initialBrand, onClose }: {
+  week: string
+  items: RecommendItem[]
+  initialBrand: string | null
+  onClose: () => void
+}) {
+  const [selectedBrand, setSelectedBrand] = useState<string | null>(initialBrand)
+  const [lightbox, setLightbox] = useState<string | null>(null)
+
+  const brands = Array.from(new Set(items.map(i => i.brand))).filter(Boolean)
+  const filtered = selectedBrand ? items.filter(i => i.brand === selectedBrand) : items
+
+  return (
+    <div className="fixed inset-0 z-50 flex">
+      {/* 遮罩 */}
+      <div className="flex-1 bg-black/50" onClick={onClose} />
+
+      {/* 抽屉主体 */}
+      <div className="w-full max-w-4xl bg-white flex flex-col shadow-2xl overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0" style={{ background: '#0034cc' }}>
+          <div className="flex items-center gap-3">
+            <span className="text-white font-bold text-lg">⭐ 单款推荐</span>
+            <span className="px-2.5 py-0.5 bg-white/20 text-white text-sm rounded-lg font-medium">{week}</span>
+            <span className="text-white/70 text-sm">{items.length} 款</span>
+          </div>
+          <button onClick={onClose} className="text-white/70 hover:text-white text-2xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-white/10 transition-colors">×</button>
+        </div>
+
+        {/* 品牌筛选 */}
+        {brands.length > 1 && (
+          <div className="flex items-center gap-2 px-6 py-3 border-b border-slate-100 bg-slate-50 shrink-0 overflow-x-auto">
+            <span className="text-xs text-slate-500 shrink-0">品牌：</span>
+            <button
+              onClick={() => setSelectedBrand(null)}
+              className={`shrink-0 px-3 py-1 text-xs rounded-full border transition-colors ${!selectedBrand ? 'text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+              style={!selectedBrand ? { background: '#0034cc' } : {}}
+            >
+              全部（{items.length}）
+            </button>
+            {brands.map(b => {
+              const cnt = items.filter(i => i.brand === b).length
+              return (
+                <button
+                  key={b}
+                  onClick={() => setSelectedBrand(b === selectedBrand ? null : b)}
+                  className={`shrink-0 px-3 py-1 text-xs rounded-full border transition-colors ${selectedBrand === b ? 'text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                  style={selectedBrand === b ? { background: '#0034cc' } : {}}
+                >
+                  {b}（{cnt}）
+                </button>
+              )
+            })}
+          </div>
+        )}
+
+        {/* 商品列表 */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {filtered.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-400">
+              <div className="text-4xl mb-3">📦</div>
+              <p>暂无单款推荐数据</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
+              {filtered.map((item, idx) => (
+                <div key={idx} className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:shadow-md transition-shadow flex flex-col">
+                  {/* 商品图片 */}
+                  <div
+                    className="aspect-square bg-slate-100 relative overflow-hidden cursor-pointer"
+                    onClick={() => item.imageUrl && setLightbox(item.imageUrl)}
+                  >
+                    {item.imageUrl ? (
+                      <img
+                        src={item.imageUrl}
+                        alt={item.itemNo}
+                        className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                        onError={e => { (e.target as HTMLImageElement).style.display = 'none'; (e.target as HTMLImageElement).nextElementSibling?.classList.remove('hidden') }}
+                      />
+                    ) : null}
+                    <div className={`w-full h-full flex items-center justify-center text-slate-300 text-3xl ${item.imageUrl ? 'hidden' : ''}`}>📷</div>
+                    {/* 品牌标签 */}
+                    {item.brand && (
+                      <span className="absolute top-2 left-2 text-xs px-1.5 py-0.5 rounded text-white font-medium" style={{ background: '#0034cc' }}>
+                        {item.brand}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* 商品信息 */}
+                  <div className="p-3 flex flex-col gap-1.5 flex-1">
+                    {/* 款号 */}
+                    <p className="text-xs font-mono text-slate-700 font-semibold leading-tight break-all">{item.itemNo || '—'}</p>
+
+                    {/* 价格 */}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-base font-bold text-rose-600">¥{item.salePrice}</span>
+                      {item.tagPrice > 0 && item.tagPrice !== item.salePrice && (
+                        <span className="text-xs text-slate-400 line-through">¥{item.tagPrice}</span>
+                      )}
+                    </div>
+
+                    {/* 覆盖率 */}
+                    {item.coverage > 0 && (
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full rounded-full"
+                            style={{ width: `${Math.min(100, item.coverage * 100)}%`, background: item.coverage >= 0.8 ? '#10b981' : '#f59e0b' }}
+                          />
+                        </div>
+                        <span className="text-xs text-slate-500 shrink-0">{Math.round(item.coverage * 100)}%</span>
+                      </div>
+                    )}
+
+                    {/* 卖点 */}
+                    {item.sellingPoints && (
+                      <p className="text-xs text-slate-500 leading-relaxed line-clamp-3 mt-0.5">{item.sellingPoints}</p>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* 图片灯箱 */}
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-60 bg-black/90 flex items-center justify-center p-4"
+          onClick={() => setLightbox(null)}
+        >
+          <img src={lightbox} alt="" className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
+          <button
+            className="absolute top-4 right-4 text-white/70 hover:text-white text-3xl w-10 h-10 flex items-center justify-center"
+            onClick={() => setLightbox(null)}
+          >×</button>
+        </div>
+      )}
     </div>
   )
 }
@@ -418,21 +633,13 @@ export default function CalendarPage() {
 
 function getCurrentWeek(): string {
   const now = new Date()
-  const year = now.getFullYear()
-  const shortYear = year % 100 // 2026 → 26
-
-  // 本年第一天
-  const jan1 = new Date(year, 0, 1)
-  // 本年第一个周一（ISO 周从周一开始）
-  const dayOfWeek = jan1.getDay() // 0=周日, 1=周一...
-  const daysToMonday = dayOfWeek === 0 ? 1 : dayOfWeek === 1 ? 0 : 8 - dayOfWeek
-  const firstMonday = new Date(jan1)
-  firstMonday.setDate(jan1.getDate() + daysToMonday)
-
-  // 今天距第一个周一的天数
-  const diffMs = now.getTime() - firstMonday.getTime()
-  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24))
-  const weekNum = diffDays < 0 ? 1 : Math.floor(diffDays / 7) + 1
+  // ISO 8601: 周一为第一天，包含1月4日的周为第1周
+  const d = new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()))
+  const dayNum = d.getUTCDay() || 7 // 周日=7
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum) // 移到本周周四
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1))
+  const weekNum = Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7)
+  const shortYear = d.getUTCFullYear() % 100
 
   return `${shortYear}W${weekNum}`
 }

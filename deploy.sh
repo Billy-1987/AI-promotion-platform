@@ -23,12 +23,24 @@ ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax
   tar xzf aipp-deploy.tar.gz
   rm aipp-deploy.tar.gz
 
-  docker stop aipp 2>/dev/null; docker rm aipp 2>/dev/null
+  mkdir -p $REMOTE_DIR/data/images || true
+
+  docker rm -f aipp 2>/dev/null || true
   docker build --no-cache -t aipp .
+  docker rm -f aipp 2>/dev/null || true
   docker run -d --name aipp -p 3001:3001 --env-file $REMOTE_DIR/.env \
     -v $REMOTE_DIR/data:/app/data \
     -v $REMOTE_DIR/generated:/app/public/generated \
     --restart unless-stopped aipp
+
+  sleep 2
+  docker exec -u root aipp chmod 777 /app/data/images 2>/dev/null || true
+
+  # 确保 nginx 允许大文件上传（200m），并 reload 配置
+  docker run --rm -v /etc/nginx/conf.d:/nginx_conf alpine \
+    sed -i 's/client_max_body_size [0-9]*m/client_max_body_size 200m/' /nginx_conf/aipp.conf
+  docker run --rm --privileged --pid=host alpine \
+    nsenter -t 1 -m -u -i -n -- nginx -s reload 2>/dev/null || true
 
   docker logs aipp 2>&1 | tail -5
 "

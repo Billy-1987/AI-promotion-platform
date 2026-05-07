@@ -74,7 +74,10 @@ export async function generateTryOn(
       aspectRatio: aspectRatio ?? '3:4',
     }),
   })
-  if (!res.ok) throw new Error('Try-on generation failed')
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}))
+    throw new Error(data.error ?? 'Try-on generation failed')
+  }
   const data = await res.json()
 
   let previewUrl: string

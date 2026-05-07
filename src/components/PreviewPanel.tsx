@@ -252,7 +252,7 @@ export default function PreviewPanel({
 
     try {
       const dataUrl = await urlToDataUrl(src)
-      saveToGallery({ dataUrl, filename, source: 'tryon' }, username)
+      await saveToGallery({ dataUrl, filename, source: 'tryon' }, username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }

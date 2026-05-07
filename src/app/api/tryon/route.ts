@@ -109,6 +109,7 @@ async function generateFromImageRef(
         { type: 'text', text: textPrompt },
       ],
     }],
+    modalities: ['image', 'text'],
     image_config: { aspect_ratio: aspectRatio },
   }
   const response = await (client.chat.completions.create as (p: unknown) => Promise<unknown>)(params)
@@ -203,11 +204,19 @@ export async function POST(req: NextRequest) {
 
   console.log('[tryon] image prompt (first 120):', imagePrompt.slice(0, 120))
 
-  // ── Generate image (race two models, both receive the clothing image) ──────
-  const generatedImageUrl = await Promise.race([
-    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-2.5-flash-image', aspectRatio),
-    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-3.1-flash-image-preview', aspectRatio),
-  ]).catch(e => { console.error('[tryon] image gen failed:', e?.message); return null })
+  // ── Generate image: race two models, take first non-null result ─────────
+  const generatedImageUrl = await Promise.any([
+    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-2.5-flash-image-preview', aspectRatio)
+      .then(url => { if (!url) throw new Error('no image from gemini-2.5-flash-image'); return url }),
+    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-3.1-flash-image-preview', aspectRatio)
+      .then(url => { if (!url) throw new Error('no image from gemini-3.1-flash-image-preview'); return url }),
+  ]).catch(e => {
+    const detail = e instanceof AggregateError
+      ? e.errors.map((err: Error) => err?.message).join(' | ')
+      : e?.message
+    console.error('[tryon] image gen failed:', detail)
+    return null
+  })
 
   console.log('[tryon] done — has image:', !!generatedImageUrl)
 
@@ -231,6 +240,13 @@ export async function POST(req: NextRequest) {
         analysis.description = text.slice(0, 200)
       }
     }
+  }
+
+  if (!generatedImageUrl) {
+    return NextResponse.json(
+      { error: '图片生成失败，当前网络环境不支持该 AI 模型，请在服务器环境下使用' },
+      { status: 503 }
+    )
   }
 
   return NextResponse.json({ ...analysis, generatedImageUrl, analyzeData })

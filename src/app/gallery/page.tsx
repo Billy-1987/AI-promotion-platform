@@ -4,7 +4,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
-import { GalleryItem, getGallery, deleteFromGallery, saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { GalleryItem, getGallery, getGalleryItem, deleteFromGallery, saveToGallery, urlToDataUrl } from '@/lib/gallery'
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
@@ -58,16 +58,24 @@ function GalleryCard({
   onToggle: (id: string) => void
   onClick: (item: GalleryItem) => void
 }) {
+  const [dataUrl, setDataUrl] = useState('')
+  useEffect(() => {
+    getGalleryItem(item.id).then(url => { if (url) setDataUrl(url) })
+  }, [item.id])
+
   return (
     <div
       className={`relative group rounded-xl overflow-hidden border-2 transition-all cursor-pointer ${
         selected ? 'ring-2' : 'border-slate-200 hover:border-slate-300'
       }`}
       style={selected ? { borderColor: '#0034cc', boxShadow: '0 0 0 2px rgba(0,52,204,0.2)' } : {}}
-      onClick={() => onClick(item)}
+      onClick={() => onClick({ ...item, dataUrl })}
     >
-      <div className="aspect-[3/4] bg-slate-100">
-        <img src={item.dataUrl} alt={item.filename} className="w-full h-full object-cover" />
+      <div className="aspect-[3/4] bg-slate-100 flex items-center justify-center">
+        {dataUrl
+          ? <img src={dataUrl} alt={item.filename} className="w-full h-full object-cover" />
+          : <span className="w-6 h-6 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+        }
       </div>
       {/* 选择框 */}
       <button
@@ -200,9 +208,13 @@ function BatchLogoModal({
 
 // ─── 预览弹窗 ─────────────────────────────────────────────────────────────────
 function PreviewModal({ item, onClose }: { item: GalleryItem; onClose: () => void }) {
+  // item.dataUrl may already be loaded by GalleryCard; use it directly
+  const dataUrl = item.dataUrl
+
   function handleDownload() {
+    if (!dataUrl) return
     const a = document.createElement('a')
-    a.href = item.dataUrl
+    a.href = dataUrl
     a.download = item.filename
     a.click()
   }
@@ -217,10 +229,13 @@ function PreviewModal({ item, onClose }: { item: GalleryItem; onClose: () => voi
           <button onClick={onClose} className="text-slate-400 hover:text-slate-700 text-2xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100">×</button>
         </div>
         <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-slate-50">
-          <img src={item.dataUrl} alt={item.filename} className="max-h-[60vh] w-auto rounded-lg shadow-2xl" />
+          {dataUrl
+            ? <img src={dataUrl} alt={item.filename} className="max-h-[60vh] w-auto rounded-lg shadow-2xl" />
+            : <span className="w-8 h-8 border-2 border-slate-300 border-t-transparent rounded-full animate-spin" />
+          }
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-slate-200 shrink-0">
-          <button onClick={handleDownload} className="flex-1 py-2.5 text-white text-sm font-medium rounded-lg transition-colors" style={{ background: '#0034cc' }}>下载</button>
+          <button onClick={handleDownload} disabled={!dataUrl} className="flex-1 py-2.5 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40" style={{ background: '#0034cc' }}>下载</button>
           <button onClick={onClose} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">关闭</button>
         </div>
       </div>
@@ -239,6 +254,19 @@ function GalleryContent() {
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
 
   useEffect(() => { setItems(getGallery(user?.username)) }, [user?.username])
+
+  // Refresh when switching back to this tab, when another tab saves, or when same-tab saves
+  useEffect(() => {
+    function refresh() { setItems(getGallery(user?.username)) }
+    document.addEventListener('visibilitychange', refresh)
+    window.addEventListener('storage', refresh)
+    window.addEventListener('gallery-updated', refresh)
+    return () => {
+      document.removeEventListener('visibilitychange', refresh)
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener('gallery-updated', refresh)
+    }
+  }, [user?.username])
 
   function refresh() { setItems(getGallery(user?.username)) }
 
@@ -261,16 +289,20 @@ function GalleryContent() {
   function clearSelection() { setSelected(new Set()) }
 
   // 批量保存（下载）
-  function handleBatchSave() {
+  async function handleBatchSave() {
     const targets = items.filter(i => selected.has(i.id))
-    targets.forEach((item, idx) => {
-      setTimeout(() => {
+    for (let idx = 0; idx < targets.length; idx++) {
+      const item = targets[idx]
+      const dataUrl = await getGalleryItem(item.id)
+      if (!dataUrl) continue
+      await new Promise<void>(res => setTimeout(() => {
         const a = document.createElement('a')
-        a.href = item.dataUrl
+        a.href = dataUrl
         a.download = item.filename
         a.click()
-      }, idx * 300)
-    })
+        res()
+      }, idx * 300))
+    }
   }
 
   // 批量删除
@@ -291,11 +323,11 @@ function GalleryContent() {
     for (let i = 0; i < targets.length; i++) {
       const item = targets[i]
       try {
-        const composited = await compositeWithLogo(item.dataUrl, '/bigoffs-logo.png', pos)
+        const fullDataUrl = await getGalleryItem(item.id)
+        if (!fullDataUrl) continue
+        const composited = await compositeWithLogo(fullDataUrl, '/bigoffs-logo.png', pos)
         const newFilename = item.filename.replace(/\.(jpg|jpeg|png)$/i, '') + '-BIGOFFS.jpg'
-        // 存入图库
-        saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source }, user?.username)
-        // 同时触发下载
+        await saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source }, user?.username)
         const a = document.createElement('a')
         a.href = composited
         a.download = newFilename
