@@ -40,9 +40,9 @@ export default function TryOnStudio() {
           {/* User info */}
           {user && (
             <div className="flex items-center gap-3 pl-4 border-l border-white/10">
-              <div className="text-right">
-                <p className="text-sm text-white font-medium">{user.name}</p>
-                <p className="text-xs text-slate-400">
+              <div className="text-right max-w-[120px]">
+                <p className="text-sm text-white font-medium truncate">{user.name}</p>
+                <p className="text-xs text-slate-400 truncate">
                   {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
                 </p>
               </div>

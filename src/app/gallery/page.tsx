@@ -361,9 +361,9 @@ function GalleryContent() {
         <div className="flex items-center gap-3">
           {user && (
             <div className="flex items-center gap-3">
-              <div className="text-right">
-                <p className="text-sm text-white font-medium">{user.name}</p>
-                <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+              <div className="text-right max-w-[120px]">
+                <p className="text-sm text-white font-medium truncate">{user.name}</p>
+                <p className="text-xs text-slate-400 truncate">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
               </div>
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>{user.name[0]}</div>
               <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
