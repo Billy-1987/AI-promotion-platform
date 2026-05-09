@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
+import { APP_VERSION } from '@/lib/version'
 
 interface BrandEntry { name: string; count: number }
 interface WeekEntry {
@@ -141,6 +142,7 @@ function CalendarContent() {
             <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
           </div>
         )}
+        <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
       </header>
 
       <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">

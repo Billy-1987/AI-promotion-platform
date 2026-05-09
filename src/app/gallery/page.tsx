@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { GalleryItem, getGallery, getGalleryItem, deleteFromGallery, saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { APP_VERSION } from '@/lib/version'
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
@@ -367,6 +368,7 @@ function GalleryContent() {
             <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
           </div>
         )}
+        <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
       </header>
 
       {/* Nav */}

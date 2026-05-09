@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from './Logo'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { APP_VERSION } from '@/lib/version'
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实' },
@@ -566,6 +567,7 @@ export default function ImageDesignStudio() {
             </button>
           </div>
         )}
+        <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
       </header>
 
       {/* Nav */}
