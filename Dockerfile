@@ -16,7 +16,7 @@ COPY --from=build /app/public ./public
 RUN mkdir -p public/generated data
 
 # Patch standalone server to extend HTTP timeout for long-running AI routes
-RUN sed -i 's/server\.listen(/server.keepAliveTimeout=180000;server.headersTimeout=185000;server.listen(/' server.js
+RUN sed -i 's/server\.listen(/server.keepAliveTimeout=600000;server.headersTimeout=605000;server.requestTimeout=600000;server.listen(/' server.js
 
 EXPOSE 3001
 ENV PORT=3001
