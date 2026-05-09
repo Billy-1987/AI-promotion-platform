@@ -130,19 +130,21 @@ function CalendarContent() {
             <p className="text-xs text-slate-400">运营日历</p>
           </div>
         </div>
-        {user && (
-          <div className="flex items-center gap-3 pl-4 border-l border-white/10">
-            <div className="text-right">
-              <p className="text-sm text-white font-medium">{user.name}</p>
-              <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+        <div className="flex items-center gap-3">
+          {user && (
+            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
+              <div className="text-right">
+                <p className="text-sm text-white font-medium">{user.name}</p>
+                <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+              </div>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>
+                {user.name[0]}
+              </div>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>
-              {user.name[0]}
-            </div>
-            <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
-          </div>
-        )}
-        <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
+          )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
+        </div>
       </header>
 
       <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">

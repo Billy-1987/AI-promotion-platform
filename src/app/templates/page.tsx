@@ -676,7 +676,7 @@ function TemplatesContent() {
               <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
           )}
-          <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
         </div>
       </header>
 

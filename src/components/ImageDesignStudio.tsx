@@ -548,26 +548,28 @@ export default function ImageDesignStudio() {
             <p className="text-xs text-slate-400 truncate">AI 图片设计</p>
           </div>
         </div>
-        {user && (
-          <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm text-white font-medium">{user.name}</p>
-              <p className="text-xs text-slate-400">
-                {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
-              </p>
+        <div className="flex items-center gap-2 md:gap-3">
+          {user && (
+            <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm text-white font-medium">{user.name}</p>
+                <p className="text-xs text-slate-400">
+                  {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
+                </p>
+              </div>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
+                {user.name[0]}
+              </div>
+              <button
+                onClick={logout}
+                className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
+              >
+                退出
+              </button>
             </div>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
-              {user.name[0]}
-            </div>
-            <button
-              onClick={logout}
-              className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
-            >
-              退出
-            </button>
-          </div>
-        )}
-        <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
+          )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
+        </div>
       </header>
 
       {/* Nav */}
