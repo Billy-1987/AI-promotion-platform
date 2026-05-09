@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { GalleryItem, getGallery, getGalleryItem, deleteFromGallery, saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { APP_VERSION } from '@/lib/version'
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
@@ -357,16 +358,19 @@ function GalleryContent() {
             <p className="text-xs text-slate-400">我的图库</p>
           </div>
         </div>
-        {user && (
-          <div className="flex items-center gap-3">
-            <div className="text-right">
-              <p className="text-sm text-white font-medium">{user.name}</p>
-              <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+        <div className="flex items-center gap-3">
+          {user && (
+            <div className="flex items-center gap-3">
+              <div className="text-right">
+                <p className="text-sm text-white font-medium">{user.name}</p>
+                <p className="text-xs text-slate-400">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
+              </div>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>{user.name[0]}</div>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>{user.name[0]}</div>
-            <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
-          </div>
-        )}
+          )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
+        </div>
       </header>
 
       {/* Nav */}

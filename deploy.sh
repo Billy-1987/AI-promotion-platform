@@ -1,8 +1,8 @@
 #!/bin/bash
 set -e
 
-SERVER="deployer@47.236.90.150"
-REMOTE_DIR="/opt/apps/i3oy507-aipp"
+SERVER="deployer@47.95.109.68"
+REMOTE_DIR="/opt/apps/aipp"
 TARBALL="/tmp/aipp-deploy.tar.gz"
 
 echo "📦 打包项目文件..."
@@ -26,6 +26,7 @@ ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax
   mkdir -p $REMOTE_DIR/data/images || true
 
   docker rm -f aipp 2>/dev/null || true
+  docker builder prune -af 2>/dev/null || true
   docker build --no-cache -t aipp .
   docker rm -f aipp 2>/dev/null || true
   docker run -d --name aipp -p 3001:3001 --env-file $REMOTE_DIR/.env \

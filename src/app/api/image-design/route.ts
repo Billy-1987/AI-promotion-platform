@@ -3,7 +3,7 @@ import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
 import { makeLogger, formatBytes } from '@/lib/logger'
 
-export const maxDuration = 120
+export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
 // Increase body size limit for reference image uploads

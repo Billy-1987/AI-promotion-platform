@@ -3,7 +3,7 @@ import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
 import { makeLogger, formatBytes } from '@/lib/logger'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 const STYLE_LABELS: Record<string, string> = {
   sport: 'sportswear', outdoor: 'outdoor', menswear: "men's fashion",

@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { APP_VERSION } from '@/lib/version'
 
 type Category = '全部' | '节日' | '节气' | '促销' | '通用'
 
@@ -675,6 +676,7 @@ function TemplatesContent() {
               <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
           )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
         </div>
       </header>
 

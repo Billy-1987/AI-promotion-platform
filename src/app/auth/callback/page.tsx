@@ -1,10 +1,8 @@
 'use client'
 
 import { useEffect } from 'react'
-import { useRouter } from 'next/navigation'
 
 export default function AuthCallback() {
-  const router = useRouter()
 
   useEffect(() => {
     async function handleCallback() {
@@ -15,7 +13,7 @@ export default function AuthCallback() {
 
       if (!code || state !== savedState) {
         alert('登录失败，请重试')
-        router.replace('/')
+        window.location.replace('/')
         return
       }
 
@@ -38,15 +36,16 @@ export default function AuthCallback() {
           region: user.storeName ?? user.store ?? undefined,
           _bigoffs: true,
         }))
-        router.replace('/')
+        // Full page reload so AuthProvider re-reads sessionStorage from scratch
+        window.location.replace('/')
       } catch {
         alert('登录失败，请重试')
-        router.replace('/')
+        window.location.replace('/')
       }
     }
 
     handleCallback()
-  }, [router])
+  }, [])
 
   return (
     <div className="min-h-screen flex items-center justify-center" style={{ background: '#f0f2f7' }}>
