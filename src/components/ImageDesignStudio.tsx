@@ -537,25 +537,25 @@ export default function ImageDesignStudio() {
   }
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden" style={{ background: '#f0f2f7' }}>
+    <div className="min-h-screen md:h-screen flex flex-col md:overflow-hidden" style={{ background: '#f0f2f7' }}>
       {/* Header */}
-      <header className="bigoffs-header px-6 flex items-center justify-between flex-shrink-0" style={{ height: 60 }}>
-        <div className="flex items-center gap-3">
+      <header className="bigoffs-header px-3 md:px-6 flex items-center justify-between flex-shrink-0" style={{ height: 60 }}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <Logo />
-          <div>
-            <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-slate-400">AI 图片设计</p>
+          <div className="min-w-0">
+            <h1 className="text-base md:text-lg font-bold text-white truncate">智能推广平台</h1>
+            <p className="text-xs text-slate-400 truncate">AI 图片设计</p>
           </div>
         </div>
         {user && (
-          <div className="flex items-center gap-3 pl-4 border-l border-white/10">
-            <div className="text-right">
+          <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10">
+            <div className="text-right hidden sm:block">
               <p className="text-sm text-white font-medium">{user.name}</p>
               <p className="text-xs text-slate-400">
                 {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
               </p>
             </div>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white" style={{ background: '#0034cc' }}>
+            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
               {user.name[0]}
             </div>
             <button
@@ -569,7 +569,7 @@ export default function ImageDesignStudio() {
       </header>
 
       {/* Nav */}
-      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1 flex-shrink-0">
+      <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅' },
           { label: '模板社区', href: '/templates', icon: '🎨' },
@@ -594,9 +594,9 @@ export default function ImageDesignStudio() {
       </nav>
 
       {/* Main */}
-      <main className="flex-1 w-full px-6 py-4 flex gap-4 overflow-hidden">
+      <main className="flex-1 w-full px-3 md:px-6 py-3 md:py-4 flex flex-col md:flex-row gap-3 md:gap-4 md:overflow-hidden">
         {/* Left panel */}
-        <div className="w-72 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
+        <div className="w-full md:w-72 md:flex-shrink-0 flex flex-col gap-3 md:overflow-y-auto">
           {/* Reference image upload */}
           <div className="glass-card rounded-2xl p-4">
             <label className="block text-sm font-medium text-slate-700 mb-2">
@@ -767,11 +767,11 @@ export default function ImageDesignStudio() {
         </div>
 
         {/* Right panel: results */}
-        <div className="flex-1 flex flex-col gap-3 min-h-0">
+        <div className="flex-1 flex flex-col gap-3 md:min-h-0 min-h-[60vh]">
           <canvas ref={canvasRef} className="hidden" />
 
           {/* Main preview */}
-          <div className="glass-card rounded-2xl flex-1 min-h-0 overflow-hidden relative flex items-center justify-center p-3">
+          <div className="glass-card rounded-2xl flex-1 min-h-[50vh] md:min-h-0 overflow-hidden relative flex items-center justify-center p-3">
             {generating ? (
               <div className="flex flex-col items-center gap-4 text-slate-500">
                 <div className="relative w-16 h-16">
@@ -1032,41 +1032,44 @@ export default function ImageDesignStudio() {
           )}
         </div>
 
-        {/* History sidebar */}
-        <div className="w-44 flex-shrink-0 flex flex-col gap-2 overflow-y-auto">
+        {/* History sidebar — desktop: vertical sidebar, mobile: horizontal strip */}
+        <div className="w-full md:w-44 md:flex-shrink-0 flex flex-col gap-2 md:overflow-y-auto">
           <p className="text-xs font-semibold text-slate-500 px-1 flex-shrink-0">历史记录</p>
           {history.length === 0 && (
-            <div className="flex-1 flex items-center justify-center">
+            <div className="md:flex-1 flex items-center justify-center py-4 md:py-0">
               <p className="text-xs text-slate-400 text-center">生成图片后<br/>将显示在这里</p>
             </div>
           )}
-          {history.map((item, index) => (
-            <div key={item.id} className="relative group flex-shrink-0">
-              <button
-                onClick={async () => {
-                  const fullUrl = await idbGet(item.id) ?? item.url
-                  openDetail(fullUrl, item.prompt, item.style, item.ratio, index)
-                }}
-                className="w-full rounded-xl overflow-hidden block"
-              >
-                <img src={item.url} alt="" className="w-full object-cover rounded-xl hover:opacity-90 transition-opacity" style={{ aspectRatio: item.ratio.replace(':', '/') }} />
-                <p className="text-xs text-slate-500 mt-1 px-0.5 truncate">{item.prompt}</p>
-              </button>
-              <button
-                onClick={() => deleteHistory(item.id)}
-                className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white text-xs items-center justify-center shadow hidden group-hover:flex"
-              >✕</button>
+          {history.length > 0 && (
+            <div className="flex md:flex-col flex-row gap-2 md:overflow-y-auto overflow-x-auto md:pb-0 pb-2">
+              {history.map((item, index) => (
+                <div key={item.id} className="relative group flex-shrink-0 w-28 md:w-full">
+                  <button
+                    onClick={async () => {
+                      const fullUrl = await idbGet(item.id) ?? item.url
+                      openDetail(fullUrl, item.prompt, item.style, item.ratio, index)
+                    }}
+                    className="w-full rounded-xl overflow-hidden block"
+                  >
+                    <img src={item.url} alt="" className="w-full object-cover rounded-xl hover:opacity-90 transition-opacity" style={{ aspectRatio: item.ratio.replace(':', '/') }} />
+                    <p className="text-xs text-slate-500 mt-1 px-0.5 truncate">{item.prompt}</p>
+                  </button>
+                  <button
+                    onClick={() => deleteHistory(item.id)}
+                    className="absolute top-1.5 right-1.5 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white text-xs items-center justify-center shadow flex md:hidden md:group-hover:flex"
+                  >✕</button>
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       </main>
 
       {/* Detail modal */}
       {detailImage && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70" onClick={() => setDetailImage(null)}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-2 md:p-0" onClick={() => setDetailImage(null)}>
           <div
-            className="relative bg-white rounded-2xl shadow-2xl flex overflow-hidden"
-            style={{ width: '85vw', maxWidth: 1100, height: '85vh' }}
+            className="relative bg-white rounded-2xl shadow-2xl flex flex-col md:flex-row overflow-hidden w-full md:w-[85vw] max-w-[1100px] h-[95vh] md:h-[85vh]"
             onClick={e => e.stopPropagation()}
           >
             {/* Close */}
@@ -1076,7 +1079,7 @@ export default function ImageDesignStudio() {
             >✕</button>
 
             {/* Image */}
-            <div className="flex-1 bg-slate-100 flex items-center justify-center p-6 relative">
+            <div className="flex-1 min-h-0 bg-slate-100 flex items-center justify-center p-3 md:p-6 relative">
               <img src={detailImage} alt="" className="max-w-full max-h-full object-contain rounded-xl shadow" />
               {/* Prev arrow */}
               {detailHistoryIndex !== null && detailHistoryIndex < history.length - 1 && (
@@ -1109,7 +1112,7 @@ export default function ImageDesignStudio() {
             </div>
 
             {/* Right panel */}
-            <div className="w-72 flex-shrink-0 flex flex-col gap-4 p-6 border-l border-slate-100 overflow-y-auto">
+            <div className="w-full md:w-72 md:flex-shrink-0 flex flex-col gap-4 p-4 md:p-6 border-t md:border-t-0 md:border-l border-slate-100 overflow-y-auto">
               <div>
                 <p className="text-xs text-slate-400 mb-1">提示词</p>
                 <p className="text-sm text-slate-800 leading-relaxed">{detailPrompt}</p>
