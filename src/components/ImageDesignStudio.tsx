@@ -30,6 +30,7 @@ const ROLE_LABEL = { hq: '总部市场部', regional: '区域运营' }
 interface GeneratedImage {
   id: string
   url: string
+  ratio?: string
 }
 
 interface HistoryItem {
@@ -342,8 +343,9 @@ export default function ImageDesignStudio() {
       const data = await res.json()
       log.info('parsed response — images:', data.images?.length ?? 0, 'texts:', data.texts?.length ?? 0)
       if (!data.images?.length) throw new Error('未生成图片，请修改提示词后重试')
-      setImages(data.images)
-      setSelectedImage(data.images[0].url)
+      const imagesWithRatio = (data.images as GeneratedImage[]).map(img => ({ ...img, ratio: useRatio }))
+      setImages(imagesWithRatio)
+      setSelectedImage(imagesWithRatio[0].url)
       if (data.texts?.length) {
         setTextOverlays(data.texts.map((t: TextOverlay) => ({ ...t, locked: true })))
       }
@@ -855,7 +857,9 @@ export default function ImageDesignStudio() {
                 ref={previewAreaRef}
                 className="relative select-none"
                 style={(() => {
-                  const r = RATIO_OPTIONS.find(r => r.value === ratio)
+                  const selectedImg = images.find(img => img.url === selectedImage)
+                  const imgRatio = selectedImg?.ratio ?? ratio
+                  const r = RATIO_OPTIONS.find(r => r.value === imgRatio)
                   const isPortrait = r && r.h > r.w
                   return {
                     aspectRatio: r ? `${r.w}/${r.h}` : '1/1',
@@ -1045,6 +1049,18 @@ export default function ImageDesignStudio() {
           {/* 操作栏：文字 + Logo + 下载 */}
           {selectedImage && !generating && (
             <div className="flex flex-col gap-2 overflow-y-auto max-h-64">
+
+              {/* 再次生成 */}
+              <button
+                onClick={() => handleGenerate()}
+                disabled={!prompt.trim()}
+                className="w-full py-2.5 rounded-xl text-sm font-semibold flex items-center justify-center gap-2 border transition-colors disabled:opacity-40 disabled:cursor-not-allowed bg-white hover:bg-slate-50 text-slate-700 border-slate-200"
+              >
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+                </svg>
+                再次生成
+              </button>
 
               <div className="flex gap-2">
                 {!withLogo ? (
