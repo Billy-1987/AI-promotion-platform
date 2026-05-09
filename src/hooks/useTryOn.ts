@@ -4,6 +4,7 @@ import { useState, useCallback } from 'react'
 import { TryOnState, TryOnResult, StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
 import { suggestBackgrounds, generateTryOn } from '@/lib/mockAI'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { makeLogger, formatBytes } from '@/lib/logger'
 
 export function useTryOn(username?: string) {
   const [state, setState] = useState<TryOnState>({
@@ -24,12 +25,30 @@ export function useTryOn(username?: string) {
   const [suggestedBackgrounds, setSuggestedBackgrounds] = useState<string[]>([])
 
   const uploadClothing = useCallback(async (file: File) => {
-    const previewUrl = URL.createObjectURL(file)
+    const log = makeLogger('tryon-upload')
+    log.info('start — name:', file.name, 'type:', file.type, 'size:', formatBytes(file.size))
+    let previewUrl: string
+    try {
+      previewUrl = URL.createObjectURL(file)
+      log.info('createObjectURL OK — preview blob URL created')
+    } catch (e) {
+      log.error('createObjectURL failed:', (e as Error)?.message)
+      alert(`无法生成预览: ${(e as Error)?.message}`)
+      return
+    }
+
+    // probe: confirm the browser can decode this preview URL
+    const probe = new window.Image()
+    probe.onload = () => log.info('preview probe OK —', probe.naturalWidth, 'x', probe.naturalHeight)
+    probe.onerror = () => log.error('preview probe FAILED — browser cannot render blob URL (likely CSP img-src blocking blob:, or file unreadable)')
+    probe.src = previewUrl
+
     const defaultStyle: StyleTag = 'womenswear'
     const defaultCategory: 'clothing' | 'shoes' = 'clothing'
     const backgrounds = suggestBackgrounds(defaultStyle, defaultCategory)
     setSuggestedBackgrounds(backgrounds)
 
+    log.info('setState — clothingPreviewUrl set, status=ready')
     setState(prev => ({
       ...prev,
       status: 'ready',
