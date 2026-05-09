@@ -57,7 +57,7 @@ export default function TryOnStudio() {
               </button>
             </div>
           )}
-          <span className="text-xs text-slate-500 ml-2">{APP_VERSION}</span>
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
         </div>
       </header>
 
