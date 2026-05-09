@@ -1,4 +1,5 @@
 import { StyleTag, Background, GeminiAnalysis, TryOnResult } from '@/types'
+import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
 
 const STYLE_TAGS: StyleTag[] = ['sport', 'outdoor', 'menswear', 'womenswear', 'kids', 'trendy', 'vintage', 'workwear']
 
@@ -32,13 +33,29 @@ export const BACKGROUNDS: Background[] = [
 export const SHOE_BACKGROUNDS = ['bg_shoe1', 'bg_shoe2', 'bg_shoe3', 'bg_shoe4', 'bg_shoe5', 'bg_shoe6']
 
 export async function analyzeClothing(file: File): Promise<GeminiAnalysis> {
+  const log = makeLogger('analyze-client')
+  const t0 = Date.now()
+  log.info('input file — name:', file.name, 'size:', formatBytes(file.size), 'type:', file.type)
   const base64 = await fileToBase64(file)
-  const res = await fetch('/api/analyze', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ imageBase64: base64, mimeType: file.type }),
-  })
-  if (!res.ok) throw new Error('Analysis failed')
+  const payload = { imageBase64: base64, mimeType: file.type }
+  log.info('sending — payload size:', formatBytes(estimateJsonSize(payload)), 'base64 chars:', base64.length)
+  let res: Response
+  try {
+    res = await fetch('/api/analyze', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (e) {
+    log.error('fetch threw — likely network/CORS/body-too-large reject:', (e as Error)?.message)
+    throw new Error(`网络请求失败: ${(e as Error)?.message}`)
+  }
+  log.info('response — status:', res.status, 'in', Date.now() - t0, 'ms')
+  if (!res.ok) {
+    const errBody = await res.text().catch(() => '')
+    log.error('non-ok response body (first 300):', errBody.slice(0, 300))
+    throw new Error(`Analysis failed (${res.status}): ${errBody.slice(0, 200)}`)
+  }
   const data = await res.json()
   if (!STYLE_TAGS.includes(data.style)) data.style = 'womenswear'
   if (!data.productCategory) data.productCategory = 'clothing'
@@ -55,28 +72,44 @@ export async function generateTryOn(
   modelGender?: string,
   aspectRatio?: string,
 ): Promise<TryOnResult> {
+  const log = makeLogger('tryon-client')
+  const t0 = Date.now()
+  log.info('input — clothing:', clothingFile && { name: clothingFile.name, size: formatBytes(clothingFile.size), type: clothingFile.type }, 'model:', modelFile && { name: modelFile.name, size: formatBytes(modelFile.size) })
   const clothingBase64 = clothingFile ? await fileToBase64(clothingFile) : undefined
   const modelBase64 = modelFile ? await fileToBase64(modelFile) : undefined
 
-  const res = await fetch('/api/tryon', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      clothingBase64,
-      clothingMime: clothingFile?.type,
-      modelBase64,
-      modelMime: modelFile?.type,
-      style: style ?? undefined,
-      backgroundId,
-      productCategory: productCategory ?? undefined,
-      skipAnalyze: skipAnalyze ?? (style != null && productCategory != null),
-      modelGender: modelGender ?? 'female',
-      aspectRatio: aspectRatio ?? '3:4',
-    }),
-  })
+  const payload = {
+    clothingBase64,
+    clothingMime: clothingFile?.type,
+    modelBase64,
+    modelMime: modelFile?.type,
+    style: style ?? undefined,
+    backgroundId,
+    productCategory: productCategory ?? undefined,
+    skipAnalyze: skipAnalyze ?? (style != null && productCategory != null),
+    modelGender: modelGender ?? 'female',
+    aspectRatio: aspectRatio ?? '3:4',
+  }
+  log.info('sending — payload size:', formatBytes(estimateJsonSize(payload)), 'clothingB64chars:', clothingBase64?.length ?? 0, 'modelB64chars:', modelBase64?.length ?? 0)
+
+  let res: Response
+  try {
+    res = await fetch('/api/tryon', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    })
+  } catch (e) {
+    log.error('fetch threw — likely network/CORS/body-too-large reject:', (e as Error)?.message)
+    throw new Error(`网络请求失败: ${(e as Error)?.message}`)
+  }
+  log.info('response — status:', res.status, 'in', Date.now() - t0, 'ms')
   if (!res.ok) {
-    const data = await res.json().catch(() => ({}))
-    throw new Error(data.error ?? 'Try-on generation failed')
+    const errBody = await res.text().catch(() => '')
+    log.error('non-ok response (first 300):', errBody.slice(0, 300))
+    let parsed: { error?: string } = {}
+    try { parsed = JSON.parse(errBody) } catch { /* not JSON */ }
+    throw new Error(parsed.error ?? `Try-on generation failed (${res.status}): ${errBody.slice(0, 200)}`)
   }
   const data = await res.json()
 

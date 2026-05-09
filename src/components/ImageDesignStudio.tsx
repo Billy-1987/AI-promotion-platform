@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from './Logo'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
+import { APP_VERSION } from '@/lib/version'
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实' },
@@ -202,12 +204,39 @@ export default function ImageDesignStudio() {
 
   // ── Reference image handlers ──────────────────────────────────
   function handleRefFile(file: File) {
-    if (refImages.length >= 4) return
+    const log = makeLogger('image-design-upload')
+    log.info('start — name:', file.name, 'type:', file.type, 'size:', formatBytes(file.size), 'currentRefCount:', refImages.length)
+
+    if (refImages.length >= 4) {
+      log.warn('refImages already at limit (4), skipping')
+      return
+    }
+
     const reader = new FileReader()
+    reader.onerror = () => {
+      log.error('FileReader error:', reader.error?.name, reader.error?.message)
+      alert(`读图失败 (FileReader): ${reader.error?.message ?? 'unknown'}`)
+    }
     reader.onload = e => {
       const dataUrl = e.target?.result as string
+      log.info('FileReader.onload — dataUrl bytes:', formatBytes(dataUrl?.length ?? 0))
+
       const MAX = 1024
+      const finishWithCompressed = (compressed: string, source: string) => {
+        log.info('compression done via', source, '— compressed dataUrl bytes:', formatBytes(compressed.length))
+        // probe: try loading the compressed dataURL to confirm browser can decode it
+        const probe = new window.Image()
+        probe.onload = () => log.info('preview probe OK —', probe.naturalWidth, 'x', probe.naturalHeight)
+        probe.onerror = () => log.error('preview probe FAILED — browser cannot decode resulting dataURL (likely CSP img-src blocking data:, or dataURL malformed)')
+        probe.src = compressed
+        setRefImages(prev => {
+          log.info('setRefImages: prev count', prev.length, '→ new count', prev.length + 1)
+          return [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }]
+        })
+      }
+
       createImageBitmap(file).then(bitmap => {
+        log.info('createImageBitmap OK —', bitmap.width, 'x', bitmap.height)
         let { width, height } = bitmap
         if (width > MAX || height > MAX) {
           if (width > height) { height = Math.round(height * MAX / width); width = MAX }
@@ -216,14 +245,24 @@ export default function ImageDesignStudio() {
         const canvas = document.createElement('canvas')
         canvas.width = width
         canvas.height = height
-        canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height)
-        bitmap.close()
-        const compressed = canvas.toDataURL('image/jpeg', 0.85)
-        setRefImages(prev => [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }])
-      }).catch(() => {
-        // fallback: use dataUrl directly via Image element
+        try {
+          canvas.getContext('2d')!.drawImage(bitmap, 0, 0, width, height)
+          bitmap.close()
+          const compressed = canvas.toDataURL('image/jpeg', 0.85)
+          finishWithCompressed(compressed, 'createImageBitmap')
+        } catch (drawErr) {
+          log.error('canvas drawImage / toDataURL failed:', (drawErr as Error)?.message)
+          alert(`图片处理失败: ${(drawErr as Error)?.message}`)
+        }
+      }).catch(bitmapErr => {
+        log.warn('createImageBitmap failed, falling back to <img>:', (bitmapErr as Error)?.message)
         const img = new window.Image()
+        img.onerror = () => {
+          log.error('fallback <img> load failed for original dataURL — file may be corrupt or unsupported format')
+          alert('图片格式无法识别，请换一张试试')
+        }
         img.onload = () => {
+          log.info('fallback <img> loaded —', img.naturalWidth, 'x', img.naturalHeight)
           let { width, height } = img
           if (width > MAX || height > MAX) {
             if (width > height) { height = Math.round(height * MAX / width); width = MAX }
@@ -232,9 +271,13 @@ export default function ImageDesignStudio() {
           const canvas = document.createElement('canvas')
           canvas.width = width
           canvas.height = height
-          canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
-          const compressed = canvas.toDataURL('image/jpeg', 0.85)
-          setRefImages(prev => [...prev, { base64: compressed.split(',')[1], mime: 'image/jpeg', preview: compressed }])
+          try {
+            canvas.getContext('2d')!.drawImage(img, 0, 0, width, height)
+            const compressed = canvas.toDataURL('image/jpeg', 0.85)
+            finishWithCompressed(compressed, '<img> fallback')
+          } catch (drawErr) {
+            log.error('canvas drawImage failed in fallback:', (drawErr as Error)?.message)
+          }
         }
         img.src = dataUrl
       })
@@ -266,20 +309,38 @@ export default function ImageDesignStudio() {
     setInlineEditIdx(null)
     setEditingText({ content: '', fontSize: 0.07, color: '#ffffff', fontFamily: TEXT_FONTS[0].value, x: 0.5, y: 0.5 })
 
+    const log = makeLogger('image-design-client')
+    const t0 = Date.now()
     try {
-      const res = await fetch('/api/image-design', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: usePrompt.trim(),
-          style: useStyle,
-          ratio: useRatio,
-          count,
-          referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
-        }),
-      })
-      if (!res.ok) throw new Error(`生成失败（${res.status}），请重试`)
+      const payload = {
+        prompt: usePrompt.trim(),
+        style: useStyle,
+        ratio: useRatio,
+        count,
+        referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
+      }
+      log.info('sending — payload size:', formatBytes(estimateJsonSize(payload)), 'refImages:', refImages.length, 'count:', count, 'ratio:', useRatio)
+      let res: Response
+      try {
+        res = await fetch('/api/image-design', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } catch (e) {
+        log.error('fetch threw:', (e as Error)?.message)
+        throw new Error(`网络请求失败: ${(e as Error)?.message}`)
+      }
+      log.info('response — status:', res.status, 'in', Date.now() - t0, 'ms')
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        log.error('non-ok response (first 300):', errBody.slice(0, 300))
+        let parsed: { error?: string; detail?: string } = {}
+        try { parsed = JSON.parse(errBody) } catch { /* not JSON */ }
+        throw new Error(parsed.error ?? parsed.detail ?? `生成失败（${res.status}）: ${errBody.slice(0, 150)}`)
+      }
       const data = await res.json()
+      log.info('parsed response — images:', data.images?.length ?? 0, 'texts:', data.texts?.length ?? 0)
       if (!data.images?.length) throw new Error('未生成图片，请修改提示词后重试')
       setImages(data.images)
       setSelectedImage(data.images[0].url)
@@ -547,25 +608,28 @@ export default function ImageDesignStudio() {
             <p className="text-xs text-slate-400 truncate">AI 图片设计</p>
           </div>
         </div>
-        {user && (
-          <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm text-white font-medium">{user.name}</p>
-              <p className="text-xs text-slate-400">
-                {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
-              </p>
+        <div className="flex items-center gap-2 md:gap-3">
+          {user && (
+            <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10">
+              <div className="text-right hidden sm:block">
+                <p className="text-sm text-white font-medium">{user.name}</p>
+                <p className="text-xs text-slate-400">
+                  {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
+                </p>
+              </div>
+              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
+                {user.name[0]}
+              </div>
+              <button
+                onClick={logout}
+                className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
+              >
+                退出
+              </button>
             </div>
-            <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
-              {user.name[0]}
-            </div>
-            <button
-              onClick={logout}
-              className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10"
-            >
-              退出
-            </button>
-          </div>
-        )}
+          )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
+        </div>
       </header>
 
       {/* Nav */}
@@ -606,7 +670,12 @@ export default function ImageDesignStudio() {
               <div className="grid grid-cols-2 gap-2 mb-2">
                 {refImages.map((img, i) => (
                   <div key={i} className="relative">
-                    <img src={img.preview} alt={`参考图${i + 1}`} className="w-full h-20 object-cover rounded-lg" />
+                    <img
+                      src={img.preview}
+                      alt={`参考图${i + 1}`}
+                      className="w-full h-20 object-cover rounded-lg"
+                      onError={() => console.error('[image-design-upload] preview <img> render failed for ref', i + 1, '— preview length:', img.preview?.length, 'starts:', img.preview?.slice(0, 40))}
+                    />
                     <button
                       onClick={() => setRefImages(prev => prev.filter((_, idx) => idx !== i))}
                       className="absolute top-1 right-1 w-5 h-5 rounded-full bg-red-500 hover:bg-red-400 text-white flex items-center justify-center text-xs shadow"

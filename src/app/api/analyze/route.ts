@@ -1,15 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
+import { makeLogger, formatBytes } from '@/lib/logger'
 
 export async function POST(req: NextRequest) {
-  const { imageBase64, mimeType } = await req.json()
+  const log = makeLogger('analyze')
+  const t0 = Date.now()
+  const contentLength = req.headers.get('content-length')
+  log.info('POST received — host:', req.headers.get('host'), 'content-length:', contentLength ? formatBytes(parseInt(contentLength, 10)) : 'unknown')
+
+  let body: { imageBase64?: string; mimeType?: string }
+  try {
+    body = await req.json()
+  } catch (e) {
+    log.error('failed to parse JSON body:', (e as Error)?.message)
+    return NextResponse.json({ error: 'Invalid JSON body', detail: (e as Error)?.message }, { status: 400 })
+  }
+  const { imageBase64, mimeType } = body
+  log.info('parsed body — imageBase64Bytes:', formatBytes(imageBase64?.length ?? 0), 'mime:', mimeType)
 
   if (!imageBase64) {
+    log.warn('missing imageBase64 — rejecting')
     return NextResponse.json({ error: 'No image provided' }, { status: 400 })
   }
 
-  const response = await client.chat.completions.create({
+  let response
+  try {
+    response = await client.chat.completions.create({
     model: 'google/gemini-2.5-flash',
     messages: [
       {
@@ -38,17 +55,25 @@ style 枚举说明：sport=运动，outdoor=户外，menswear=男装，womenswea
       },
     ],
   })
+  } catch (e) {
+    log.error('AI call failed:', (e as Error)?.message, '\n', (e as Error)?.stack)
+    return NextResponse.json({ error: 'AI call failed', detail: (e as Error)?.message }, { status: 500 })
+  }
 
+  log.info('AI call returned in', Date.now() - t0, 'ms')
   const text = response.choices[0]?.message?.content ?? ''
 
   try {
     const json = JSON.parse(text.trim())
+    log.info('done in', Date.now() - t0, 'ms')
     return NextResponse.json(json)
   } catch {
     const match = text.match(/\{[\s\S]*\}/)
     if (match) {
+      log.info('done (fallback parse) in', Date.now() - t0, 'ms')
       return NextResponse.json(JSON.parse(match[0]))
     }
+    log.error('parse failed — raw text first 200:', text.slice(0, 200))
     return NextResponse.json({ error: 'Parse failed', raw: text }, { status: 500 })
   }
 }

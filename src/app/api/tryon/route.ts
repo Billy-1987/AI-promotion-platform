@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
+import { makeLogger, formatBytes } from '@/lib/logger'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
 const STYLE_LABELS: Record<string, string> = {
   sport: 'sportswear', outdoor: 'outdoor', menswear: "men's fashion",
@@ -133,15 +134,39 @@ const ANALYZE_PROMPT = `Analyze this product image. Return pure JSON only (no ma
 {"style":"sport|outdoor|menswear|womenswear|kids|trendy|vintage|workwear","productCategory":"shoes|clothing","colors":["color1"],"keywords":["kw1"]}`
 
 export async function POST(req: NextRequest) {
+  const log = makeLogger('tryon')
+  const t0 = Date.now()
+  const contentLength = req.headers.get('content-length')
+  const host = req.headers.get('host')
+  log.info('POST received — host:', host, 'content-length:', contentLength ? formatBytes(parseInt(contentLength, 10)) : 'unknown')
+
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch (e) {
+    log.error('failed to parse JSON body:', (e as Error)?.message)
+    return NextResponse.json({ error: 'Invalid JSON body', detail: (e as Error)?.message }, { status: 400 })
+  }
   const {
     clothingBase64, clothingMime,
     style: inputStyle, backgroundId,
     productCategory: inputCategory, skipAnalyze,
     modelGender = 'female',
     aspectRatio = '3:4',
-  } = await req.json()
+  } = body as {
+    clothingBase64?: string
+    clothingMime?: string
+    style?: string
+    backgroundId?: string
+    productCategory?: 'clothing' | 'shoes'
+    skipAnalyze?: boolean
+    modelGender?: string
+    aspectRatio?: string
+  }
+  log.info('parsed body — clothingBase64Bytes:', formatBytes(clothingBase64?.length ?? 0), 'mime:', clothingMime, 'style:', inputStyle, 'bg:', backgroundId, 'category:', inputCategory)
 
   if (!clothingBase64) {
+    log.warn('missing clothingBase64 — rejecting')
     return NextResponse.json({ error: 'No clothing image provided' }, { status: 400 })
   }
 
@@ -150,17 +175,17 @@ export async function POST(req: NextRequest) {
   const styleKey = inputStyle ?? 'womenswear'
   const styleLabel = STYLE_LABELS[styleKey] ?? 'fashion'
   const styleZhLabel = STYLE_ZH[styleKey] ?? '时尚'
-  const bgScene = BG_SCENES[backgroundId] ?? 'a clean studio with soft white lighting'
+  const bgScene = (backgroundId && BG_SCENES[backgroundId]) ?? 'a clean studio with soft white lighting'
   const modelDesc = (MODEL_BY_GENDER[modelGender] ?? MODEL_BY_GENDER.female)[styleKey]
     ?? MODEL_BY_GENDER.female.womenswear
 
-  console.log('[tryon] start — style:', styleKey, 'shoes:', isShoes, 'gender:', modelGender, 'ratio:', aspectRatio)
+  log.info('start AI calls — style:', styleKey, 'shoes:', isShoes, 'gender:', modelGender, 'ratio:', aspectRatio)
 
   // ── Run all three in parallel: describe, analyze, text-analysis ───────────
   const [clothingDesc, analyzeRes, textRes] = await Promise.all([
     // 1. Describe clothing for image gen prompt
     describeClothing(clothingBase64, mime, isShoes).catch(e => {
-      console.error('[tryon] describe failed:', e?.message)
+      log.error('describe failed:', (e as Error)?.message, '\n', (e as Error)?.stack)
       return ''
     }),
 
@@ -194,7 +219,7 @@ export async function POST(req: NextRequest) {
     }).catch(() => null),
   ])
 
-  console.log('[tryon] describe result:', clothingDesc.slice(0, 80))
+  log.info('describe result (first 80):', clothingDesc.slice(0, 80))
 
   // ── Build image gen prompt ────────────────────────────────────────────────
   const desc = clothingDesc || (isShoes ? 'a stylish shoe' : `a ${styleLabel} clothing item`)
@@ -202,7 +227,7 @@ export async function POST(req: NextRequest) {
     ? `Professional product photography. The input image shows the exact shoe to photograph — reproduce its design, colors, materials, and branding EXACTLY with no changes. Setting: ${bgScene}. No person, no body parts. Slightly angled view, professional lighting, soft shadows. High-end retail catalog style. Photorealistic.`
     : `Professional ${styleLabel} fashion photo. ${modelDesc}. The model is wearing EXACTLY the clothing item shown in the input image — same garment type, same colors, same cut, same patterns, same logos, same details. Do NOT change or substitute any part of the clothing. Background: ${bgScene}. Full-body or 3/4 shot. High-end fashion campaign, photorealistic, sharp focus.`
 
-  console.log('[tryon] image prompt (first 120):', imagePrompt.slice(0, 120))
+  log.info('image prompt (first 120):', imagePrompt.slice(0, 120))
 
   // ── Generate image: race two models, take first non-null result ─────────
   const generatedImageUrl = await Promise.any([
@@ -213,12 +238,12 @@ export async function POST(req: NextRequest) {
   ]).catch(e => {
     const detail = e instanceof AggregateError
       ? e.errors.map((err: Error) => err?.message).join(' | ')
-      : e?.message
-    console.error('[tryon] image gen failed:', detail)
+      : (e as Error)?.message
+    log.error('image gen failed:', detail, '\n', (e as Error)?.stack)
     return null
   })
 
-  console.log('[tryon] done — has image:', !!generatedImageUrl)
+  log.info('image gen finished — has image:', !!generatedImageUrl, 'total ms so far:', Date.now() - t0)
 
   // ── Parse analyze result ──────────────────────────────────────────────────
   let analyzeData: Record<string, unknown> | null = null
@@ -243,11 +268,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (!generatedImageUrl) {
+    log.error('no image — returning 503')
     return NextResponse.json(
       { error: '图片生成失败，当前网络环境不支持该 AI 模型，请在服务器环境下使用' },
       { status: 503 }
     )
   }
 
+  log.info('done in', Date.now() - t0, 'ms')
   return NextResponse.json({ ...analysis, generatedImageUrl, analyzeData })
 }

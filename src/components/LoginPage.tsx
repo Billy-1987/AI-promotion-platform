@@ -7,8 +7,17 @@ import Logo from './Logo'
 const BIGOFFS_CLIENT_ID = '4dNDohJceQKcGoKqadkBJiytX5VEO9tm'
 const BIGOFFS_AUTHORIZE_URL = 'https://oapi.bigoffs.com/oauth/authorize'
 
+function generateState() {
+  if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+    return crypto.randomUUID()
+  }
+  // crypto.getRandomValues works in both HTTP and HTTPS
+  return Array.from(crypto.getRandomValues(new Uint8Array(16)))
+    .map(b => b.toString(16).padStart(2, '0')).join('')
+}
+
 function loginWithBigOffs() {
-  const state = crypto.randomUUID()
+  const state = generateState()
   sessionStorage.setItem('bigoffs_state', state)
   const params = new URLSearchParams({
     client_id: BIGOFFS_CLIENT_ID,

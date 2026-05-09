@@ -61,7 +61,12 @@ export default function UploadPanel({
         className="h-64 border-2 border-dashed border-slate-300 hover:border-blue-400 rounded-xl transition-colors cursor-pointer bg-slate-50 flex items-center justify-center overflow-hidden mb-3"
       >
         {previewUrl ? (
-          <img src={previewUrl} alt="商品图" className="w-full h-full object-contain" />
+          <img
+            src={previewUrl}
+            alt="商品图"
+            className="w-full h-full object-contain"
+            onError={() => console.error('[tryon-upload] preview <img> render failed — previewUrl starts:', previewUrl?.slice(0, 60))}
+          />
         ) : (
           <div className="text-center px-6">
             <div className="text-5xl mb-3">{isShoes ? '👟' : '📦'}</div>

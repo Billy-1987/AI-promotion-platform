@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { writeFile, access, mkdir } from 'fs/promises'
 import path from 'path'
+import { openrouter as client } from '@/lib/openrouter'
 
-export const maxDuration = 120
+export const maxDuration = 300
 
-const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY
 const GENERATED_DIR = path.join(process.cwd(), 'public', 'generated')
 
 const VARIANT_STYLE = [
@@ -85,29 +85,16 @@ async function generatePoster(scene: string, variant: number): Promise<string | 
   const variantStyle = VARIANT_STYLE[variant] ?? VARIANT_STYLE[0]
   const fullPrompt = `Create a 9:16 vertical portrait poster image for a Chinese retail promotion. Scene: ${scene}. Style: ${variantStyle}. Fill the entire canvas edge to edge with the illustration. CRITICAL REQUIREMENT: Do NOT include any text, words, letters, numbers, Chinese characters, typography, captions, labels, logos, or watermarks anywhere in the image. The image must be 100% text-free — pure visual scene only. High quality, professional photography or illustration style.`
 
-  const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${OPENROUTER_KEY}`,
-      'Content-Type': 'application/json',
-      'HTTP-Referer': 'https://aipp.bigoffs.cn',
-      'X-Title': 'AIPP Template Community',
-    },
-    body: JSON.stringify({
-      model: 'google/gemini-2.5-flash-image',
-      messages: [{ role: 'user', content: fullPrompt }],
-      modalities: ['image'],
-      image_config: { aspect_ratio: '9:16' },
-    }),
+  const response = await (client.chat.completions.create as (p: unknown) => Promise<unknown>)({
+    model: 'google/gemini-2.5-flash-image',
+    messages: [{ role: 'user', content: fullPrompt }],
+    modalities: ['image'],
+    image_config: { aspect_ratio: '9:16' },
   })
-
-  if (!res.ok) {
-    console.error('[templates] OpenRouter error:', res.status, await res.text())
-    return null
-  }
-
-  const data = await res.json()
-  return data?.choices?.[0]?.message?.images?.[0]?.image_url?.url ?? null
+  const msg = response as Record<string, unknown>
+  const images = (msg?.choices as Array<{ message: Record<string, unknown> }>)?.[0]
+    ?.message?.images as Array<{ image_url: { url: string } }> | undefined
+  return images?.[0]?.image_url?.url ?? null
 }
 
 export async function GET(req: NextRequest) {
@@ -116,7 +103,7 @@ export async function GET(req: NextRequest) {
   const variant = parseInt(searchParams.get('variant') ?? '0', 10)
   const force = searchParams.get('force') === '1'
 
-  if (!OPENROUTER_KEY) {
+  if (!process.env.OPENROUTER_API_KEY) {
     return NextResponse.json({ url: null, error: 'Missing OPENROUTER_API_KEY' }, { status: 500 })
   }
 

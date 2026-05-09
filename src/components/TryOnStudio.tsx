@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import UploadPanel from './UploadPanel'
 import PreviewPanel from './PreviewPanel'
 import Logo from './Logo'
+import { APP_VERSION } from '@/lib/version'
 
 const ROLE_LABEL = { hq: '总部市场部', regional: '区域运营' }
 
@@ -56,6 +57,7 @@ export default function TryOnStudio() {
               </button>
             </div>
           )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
         </div>
       </header>
 
