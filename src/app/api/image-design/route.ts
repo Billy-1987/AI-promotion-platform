@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
 
-export const maxDuration = 120
+export const maxDuration = 300
 export const dynamic = 'force-dynamic'
 
 // Increase body size limit for reference image uploads
