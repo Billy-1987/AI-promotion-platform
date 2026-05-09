@@ -5,6 +5,7 @@ import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { APP_VERSION } from '@/lib/version'
 
 type Category = '全部' | '节日' | '节气' | '促销' | '通用'
 
@@ -100,22 +101,29 @@ const CATEGORY_COLORS: Record<Category, string> = {
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
-// Client-side image URL cache — keyed by `topic:variant`
-const imageCache: Record<string, string | null> = {}
+type VariantData = { url: string | null; slogans: [string, string] }
 
-async function fetchVariant(topic: string, variant: number, force = false): Promise<string | null> {
+// Client-side cache — keyed by `topic:variant`
+const variantCache: Record<string, VariantData> = {}
+
+async function fetchVariant(topic: string, variant: number, force = false): Promise<VariantData> {
   const key = `${topic}:${variant}`
-  if (!force && imageCache[key] !== undefined) return imageCache[key]
+  if (!force && variantCache[key] !== undefined) return variantCache[key]
   try {
     const params = new URLSearchParams({ topic, variant: String(variant) })
     if (force) params.set('force', '1')
     const res = await fetch(`/api/templates?${params}`)
     const data = await res.json()
-    const url: string | null = data.url ?? null
-    imageCache[key] = url
-    return url
+    const result: VariantData = {
+      url: data.url ?? null,
+      slogans: Array.isArray(data.slogans) && data.slogans.length === 2
+        ? (data.slogans as [string, string])
+        : [`${topic}，精彩呈现`, `${topic}，惊喜不停`],
+    }
+    variantCache[key] = result
+    return result
   } catch {
-    return null
+    return { url: null, slogans: [`${topic}，精彩呈现`, `${topic}，惊喜不停`] }
   }
 }
 
@@ -124,9 +132,10 @@ function TemplateCard({
   onClick,
 }: {
   item: TemplateItem
-  onClick: (item: TemplateItem, urls: [string | null, string | null]) => void
+  onClick: (item: TemplateItem, data: VariantData) => void
 }) {
   const [url0, setUrl0] = useState<string | null>(null)
+  const [slogans0, setSlogans0] = useState<[string, string] | null>(null)
   const [loading, setLoading] = useState(false)
   const [visible, setVisible] = useState(false)
   const cardRef = useRef<HTMLDivElement>(null)
@@ -148,7 +157,7 @@ function TemplateCard({
     let cancelled = false
     setLoading(true)
     fetchVariant(item.searchTopic, 0).then(v0 => {
-      if (!cancelled) { setUrl0(v0); setLoading(false) }
+      if (!cancelled) { setUrl0(v0.url); setSlogans0(v0.slogans); setLoading(false) }
     })
     return () => { cancelled = true }
   }, [visible, item.searchTopic])
@@ -159,7 +168,7 @@ function TemplateCard({
     <div
       ref={cardRef}
       className="group bg-white rounded-xl overflow-hidden border border-slate-200 hover:border-slate-300 hover:shadow-md transition-all cursor-pointer flex flex-col"
-      onClick={() => onClick(item, [url0, null])}
+      onClick={() => onClick(item, { url: url0, slogans: slogans0 ?? [`${item.searchTopic}，精彩呈现`, `${item.searchTopic}，惊喜不停`] })}
     >
       {/* 9:16 thumbnail */}
       <div className="aspect-[9/16] bg-slate-100 relative overflow-hidden">
@@ -194,6 +203,11 @@ function TemplateCard({
       <div className="p-3">
         <h3 className="text-sm font-semibold text-slate-800">{item.title}</h3>
         {item.date && <p className="text-xs text-slate-500 mt-0.5">{item.date}</p>}
+        {slogans0 && (
+          <p className="text-xs text-slate-600 mt-1.5 italic line-clamp-1" title={slogans0[0]}>
+            「{slogans0[0]}」
+          </p>
+        )}
       </div>
     </div>
   )
@@ -201,35 +215,48 @@ function TemplateCard({
 
 function PreviewModal({
   item,
-  imageUrls: initialUrls,
+  initial,
   username,
   onClose,
 }: {
   item: TemplateItem
-  imageUrls: [string | null, string | null]
+  initial: VariantData
   username?: string
   onClose: () => void
 }) {
   const [activeVariant, setActiveVariant] = useState(0)
   // Start with whatever variant 0 we already have; lazy-load variant 1 on open
-  const [imageUrls, setImageUrls] = useState<[string | null, string | null]>(initialUrls)
+  const [imageUrls, setImageUrls] = useState<[string | null, string | null]>([initial.url, null])
+  const [variantSlogans, setVariantSlogans] = useState<[[string, string], [string, string] | null]>([initial.slogans, null])
+  const [sloganIndex, setSloganIndex] = useState<0 | 1>(0)
   const [loadingV1, setLoadingV1] = useState(false)
   const [regenerating, setRegenerating] = useState(false)
 
   const imageUrl = imageUrls[activeVariant] ?? imageUrls[0]
+  const currentSlogans = variantSlogans[activeVariant] ?? variantSlogans[0]
+  const currentSlogan = currentSlogans[sloganIndex]
 
   async function handleRegenerate() {
     setRegenerating(true)
     handleRemoveLogo()
-    const newUrl = await fetchVariant(item.searchTopic, activeVariant, true)
-    if (newUrl) {
+    const next = await fetchVariant(item.searchTopic, activeVariant, true)
+    if (next.url) {
       setImageUrls(prev => {
-        const next: [string | null, string | null] = [prev[0], prev[1]]
-        next[activeVariant] = newUrl
-        return next
+        const arr: [string | null, string | null] = [prev[0], prev[1]]
+        arr[activeVariant] = next.url
+        return arr
+      })
+      setVariantSlogans(prev => {
+        const arr: [[string, string], [string, string] | null] = [prev[0], prev[1]]
+        arr[activeVariant] = next.slogans
+        return arr
       })
     }
     setRegenerating(false)
+  }
+
+  function handleSwapSlogan() {
+    setSloganIndex(i => (i === 0 ? 1 : 0))
   }
 
   // Load variant 1 in background when modal opens
@@ -239,7 +266,8 @@ function PreviewModal({
     setLoadingV1(true)
     fetchVariant(item.searchTopic, 1).then(v1 => {
       if (!cancelled) {
-        setImageUrls(prev => [prev[0], v1])
+        setImageUrls(prev => [prev[0], v1.url])
+        setVariantSlogans(prev => [prev[0], v1.slogans])
         setLoadingV1(false)
       }
     })
@@ -272,6 +300,7 @@ function PreviewModal({
   // Reset logo state when switching variants
   function switchVariant(v: number) {
     setActiveVariant(v)
+    setSloganIndex(0)
     setWithLogo(false)
     setCompositedUrl(null)
     posterImgRef.current = null
@@ -458,6 +487,17 @@ function PreviewModal({
                 款式二
               </button>
             </div>
+            {/* 换金句 */}
+            <button
+              onClick={handleSwapSlogan}
+              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+              title="切换另一条金句"
+            >
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M8 7h12m0 0l-4-4m4 4l-4 4m-4 6H4m0 0l4 4m-4-4l4-4" />
+              </svg>
+              换金句
+            </button>
             {/* 换一张 */}
             <button
               onClick={handleRegenerate}
@@ -540,6 +580,16 @@ function PreviewModal({
           )}
         </div>
 
+        {/* Slogan */}
+        {currentSlogan && (
+          <div className="px-6 py-3 bg-white border-t border-slate-100 flex items-center justify-center gap-2 shrink-0">
+            <span className="text-slate-400 text-sm">「</span>
+            <p className="text-base font-medium text-slate-800 italic text-center">{currentSlogan}</p>
+            <span className="text-slate-400 text-sm">」</span>
+            <span className="text-xs text-slate-400 ml-2">{sloganIndex + 1}/2</span>
+          </div>
+        )}
+
         {/* Footer */}
         <div className="flex gap-3 px-6 py-4 border-t border-slate-200 shrink-0">
           {!withLogo ? (
@@ -587,7 +637,7 @@ function TemplatesContent() {
   const { user, logout } = useAuth()
   const [category, setCategory] = useState<Category>('全部')
   const [page, setPage] = useState(1)
-  const [preview, setPreview] = useState<{ item: TemplateItem; imageUrls: [string | null, string | null] } | null>(null)
+  const [preview, setPreview] = useState<{ item: TemplateItem; initial: VariantData } | null>(null)
 
   const categories: Category[] = ['全部', '节日', '节气', '促销', '通用']
   const filtered = category === '全部' ? TEMPLATES : TEMPLATES.filter(t => t.category === category)
@@ -599,8 +649,8 @@ function TemplatesContent() {
     setPage(1)
   }
 
-  const handleCardClick = useCallback((item: TemplateItem, urls: [string | null, string | null]) => {
-    setPreview({ item, imageUrls: urls })
+  const handleCardClick = useCallback((item: TemplateItem, data: VariantData) => {
+    setPreview({ item, initial: data })
   }, [])
 
   return (
@@ -626,6 +676,7 @@ function TemplatesContent() {
               <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors">退出</button>
             </div>
           )}
+          <span className="text-xs text-slate-400 ml-1">{APP_VERSION}</span>
         </div>
       </header>
 
@@ -721,7 +772,7 @@ function TemplatesContent() {
       {preview && (
         <PreviewModal
           item={preview.item}
-          imageUrls={preview.imageUrls}
+          initial={preview.initial}
           username={user?.username}
           onClose={() => setPreview(null)}
         />

@@ -8,8 +8,8 @@ import OpenAI from 'openai'
 
 const PROVIDER = process.env.AI_PROVIDER ?? 'openrouter'
 const API_KEY = PROVIDER === 'modelverse'
-  ? (process.env.MODELVERSE_API_KEY ?? process.env.OPENROUTER_API_KEY ?? '')
-  : (process.env.OPENROUTER_API_KEY ?? '')
+  ? (process.env.MODELVERSE_API_KEY ?? process.env.OPENROUTER_API_KEY ?? 'dummy-build-key')
+  : (process.env.OPENROUTER_API_KEY ?? 'dummy-build-key')
 
 // ── Modelverse (Gemini-native) adapter ────────────────────────────────────────
 
@@ -108,22 +108,32 @@ async function modelverseCreate(params: Record<string, unknown>) {
 // ── OpenRouter (OpenAI-compatible) client ─────────────────────────────────────
 
 function createOpenRouterClient() {
+  // 用 eval('require') 绕过 Turbopack 静态分析，避免生产构建报 Module not found
   const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY
   if (proxyUrl) {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const { HttpsProxyAgent } = require('https-proxy-agent')
-    const agent = new HttpsProxyAgent(proxyUrl)
-    return new OpenAI({
-      baseURL: 'https://openrouter.ai/api/v1',
-      apiKey: API_KEY,
-      httpAgent: agent,
-      fetchOptions: { agent },
-    } as ConstructorParameters<typeof OpenAI>[0])
+    try {
+      const dynamicRequire = eval('require') as NodeRequire
+      const { HttpsProxyAgent } = dynamicRequire('https-proxy-agent')
+      const agent = new HttpsProxyAgent(proxyUrl)
+      return new OpenAI({
+        baseURL: 'https://openrouter.ai/api/v1',
+        apiKey: API_KEY,
+        httpAgent: agent,
+        fetchOptions: { agent },
+      } as ConstructorParameters<typeof OpenAI>[0])
+    } catch (e) {
+      console.warn('[openrouter] HTTPS_PROXY set but https-proxy-agent unavailable, ignoring proxy:', e)
+    }
   }
   return new OpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey: API_KEY })
 }
 
 // ── Export ────────────────────────────────────────────────────────────────────
+
+// Modelverse: direct adapter object
+// OpenRouter: lazy singleton proxy — defers initialization so build/SSR doesn't
+//   fail when OPENROUTER_API_KEY isn't set at module load time
+let _orClient: OpenAI | null = null
 
 export const openrouter =
   PROVIDER === 'modelverse'
@@ -134,4 +144,10 @@ export const openrouter =
           },
         },
       }
-    : createOpenRouterClient()
+    : new Proxy({} as OpenAI, {
+        get(_target, prop) {
+          if (!_orClient) _orClient = createOpenRouterClient()
+          const value = (_orClient as unknown as Record<string | symbol, unknown>)[prop as string]
+          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(_orClient) : value
+        },
+      })

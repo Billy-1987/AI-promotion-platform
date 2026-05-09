@@ -107,6 +107,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ url: null, error: 'Missing OPENROUTER_API_KEY' }, { status: 500 })
   }
 
+  const entry = PROMPT_MAP[topic]
+  const slogans: [string, string] = entry?.slogans ?? [`${topic}，精彩呈现`, `${topic}，惊喜不停`]
+
   const filename = safeFilename(topic, variant)
   const filepath = path.join(GENERATED_DIR, filename)
   const publicUrl = `/generated/${filename}`
@@ -115,29 +118,28 @@ export async function GET(req: NextRequest) {
   if (!force) {
     try {
       await access(filepath)
-      return NextResponse.json({ url: publicUrl })
+      return NextResponse.json({ url: publicUrl, slogans })
     } catch { /* not cached yet */ }
   }
 
-  const entry = PROMPT_MAP[topic]
   const scene = entry?.scene ?? `promotional poster for "${topic}", beautiful illustration style, festive atmosphere`
 
   try {
     const dataUrl = await generatePoster(scene, variant)
-    if (!dataUrl) return NextResponse.json({ url: null })
+    if (!dataUrl) return NextResponse.json({ url: null, slogans })
 
     // Save to disk (works in Docker with mounted volume; silently skipped on read-only FS)
     try {
       await mkdir(GENERATED_DIR, { recursive: true })
       const base64Data = dataUrl.replace(/^data:image\/\w+;base64,/, '')
       await writeFile(filepath, Buffer.from(base64Data, 'base64'))
-      return NextResponse.json({ url: publicUrl })
+      return NextResponse.json({ url: publicUrl, slogans })
     } catch {
       // Filesystem not writable (e.g. Vercel) — return data URL directly
-      return NextResponse.json({ url: dataUrl })
+      return NextResponse.json({ url: dataUrl, slogans })
     }
   } catch (e) {
     console.error('[templates] Generate error:', e)
-    return NextResponse.json({ url: null })
+    return NextResponse.json({ url: null, slogans })
   }
 }
