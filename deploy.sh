@@ -36,11 +36,42 @@ ssh -o StrictHostKeyChecking=no -o ServerAliveInterval=60 -o ServerAliveCountMax
   sleep 2
   docker exec -u root aipp chmod 777 /app/data/images 2>/dev/null || true
 
-  # 确保 nginx 允许大文件上传（200m），并 reload 配置
-  docker run --rm -v /etc/nginx/conf.d:/nginx_conf alpine \
-    sed -i 's/client_max_body_size [0-9]*m/client_max_body_size 200m/' /nginx_conf/aipp.conf
+  # ── nginx 关键配置（幂等）──────────────────────────────────────
+  # 之前的 sed 只能替换已有的 client_max_body_size，原配置里没这行就 no-op，
+  # 导致云端上传图片走 nginx 默认 1m 限制被拒。这里改成：
+  #   - 已有 client_max_body_size：替换数值
+  #   - 没有：在 server { 后面追加一行
+  # 同时设置 proxy_read/send_timeout 避免 AI 长连接被 nginx 60s 默认 timeout 切断
+  docker run --rm -v /etc/nginx/conf.d:/nginx_conf alpine sh -c '
+    CONF=/nginx_conf/aipp.conf
+    if [ ! -f \"\$CONF\" ]; then
+      echo \"[deploy] nginx config \$CONF 不存在，跳过修改\"
+      exit 0
+    fi
+    cp \"\$CONF\" \"\$CONF.bak.\$(date +%s)\"
+    # client_max_body_size 200m
+    if grep -q \"client_max_body_size\" \"\$CONF\"; then
+      sed -i \"s/client_max_body_size [0-9]*[mMkKgG];/client_max_body_size 200m;/\" \"\$CONF\"
+    else
+      sed -i \"/server {/a\\    client_max_body_size 200m;\" \"\$CONF\"
+    fi
+    # proxy_read_timeout 300s (AI calls can run 30-60s)
+    if grep -q \"proxy_read_timeout\" \"\$CONF\"; then
+      sed -i \"s/proxy_read_timeout [0-9]*s\\?;/proxy_read_timeout 300s;/\" \"\$CONF\"
+    else
+      sed -i \"/server {/a\\    proxy_read_timeout 300s;\" \"\$CONF\"
+    fi
+    if grep -q \"proxy_send_timeout\" \"\$CONF\"; then
+      sed -i \"s/proxy_send_timeout [0-9]*s\\?;/proxy_send_timeout 300s;/\" \"\$CONF\"
+    else
+      sed -i \"/server {/a\\    proxy_send_timeout 300s;\" \"\$CONF\"
+    fi
+    echo \"[deploy] nginx config updated:\"
+    grep -E \"client_max_body_size|proxy_(read|send)_timeout\" \"\$CONF\" || true
+  '
+  # validate config and reload
   docker run --rm --privileged --pid=host alpine \
-    nsenter -t 1 -m -u -i -n -- nginx -s reload 2>/dev/null || true
+    nsenter -t 1 -m -u -i -n -- sh -c \"nginx -t && nginx -s reload\" 2>&1 | tail -5 || true
 
   docker logs aipp 2>&1 | tail -5
 "

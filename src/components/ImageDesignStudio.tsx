@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from './Logo'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
+import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实' },
@@ -266,20 +267,38 @@ export default function ImageDesignStudio() {
     setInlineEditIdx(null)
     setEditingText({ content: '', fontSize: 0.07, color: '#ffffff', fontFamily: TEXT_FONTS[0].value, x: 0.5, y: 0.5 })
 
+    const log = makeLogger('image-design-client')
+    const t0 = Date.now()
     try {
-      const res = await fetch('/api/image-design', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: usePrompt.trim(),
-          style: useStyle,
-          ratio: useRatio,
-          count,
-          referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
-        }),
-      })
-      if (!res.ok) throw new Error(`生成失败（${res.status}），请重试`)
+      const payload = {
+        prompt: usePrompt.trim(),
+        style: useStyle,
+        ratio: useRatio,
+        count,
+        referenceImages: refImages.length > 0 ? refImages.map(({ base64, mime }) => ({ base64, mime })) : undefined,
+      }
+      log.info('sending — payload size:', formatBytes(estimateJsonSize(payload)), 'refImages:', refImages.length, 'count:', count, 'ratio:', useRatio)
+      let res: Response
+      try {
+        res = await fetch('/api/image-design', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        })
+      } catch (e) {
+        log.error('fetch threw:', (e as Error)?.message)
+        throw new Error(`网络请求失败: ${(e as Error)?.message}`)
+      }
+      log.info('response — status:', res.status, 'in', Date.now() - t0, 'ms')
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '')
+        log.error('non-ok response (first 300):', errBody.slice(0, 300))
+        let parsed: { error?: string; detail?: string } = {}
+        try { parsed = JSON.parse(errBody) } catch { /* not JSON */ }
+        throw new Error(parsed.error ?? parsed.detail ?? `生成失败（${res.status}）: ${errBody.slice(0, 150)}`)
+      }
       const data = await res.json()
+      log.info('parsed response — images:', data.images?.length ?? 0, 'texts:', data.texts?.length ?? 0)
       if (!data.images?.length) throw new Error('未生成图片，请修改提示词后重试')
       setImages(data.images)
       setSelectedImage(data.images[0].url)
