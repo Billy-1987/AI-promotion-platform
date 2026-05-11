@@ -29,10 +29,12 @@ export default function AuthCallback() {
         if (!res.ok) throw new Error('exchange failed')
         const user = await res.json()
         sessionStorage.removeItem('bigoffs_state')
+        const rawRole = user.role ?? user.userType ?? user.type ?? ''
+        const isHQ = typeof rawRole === 'string' && /^(hq|admin|总部|admin.*hq)/i.test(rawRole)
         sessionStorage.setItem('aipp_user', JSON.stringify({
           username: user.username ?? user.userId ?? user.id ?? 'bigoffs_user',
           name: user.nickname ?? user.name ?? user.username ?? 'BigOffs 用户',
-          role: 'regional',
+          role: isHQ ? 'hq' : 'regional',
           region: user.storeName ?? user.store ?? undefined,
           _bigoffs: true,
         }))
