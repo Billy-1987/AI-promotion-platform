@@ -463,18 +463,16 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
         {weekNote ? (
           <button
             onClick={() => onEditNote(entry.week, weekNote)}
-            className="w-full px-6 py-3 text-left border-t border-amber-100 bg-gradient-to-r hover:from-amber-50 hover:to-yellow-50 transition-colors group"
+            className="w-full px-6 py-3 text-left border-t border-amber-100 bg-gradient-to-r hover:from-amber-50 hover:to-yellow-50 transition-colors group flex items-start gap-3"
           >
-            <div className="flex items-center gap-2">
-              <span className="shrink-0 text-amber-400 text-lg">💬</span>
-              <div>
-                <div className="text-xs font-semibold text-amber-500 uppercase tracking-wide">推广提示</div>
-                <div className="text-sm text-amber-700 leading-relaxed mt-0.5">{weekNote}</div>
-              </div>
-              {isHQ && (
-                <span className="ml-auto shrink-0 text-xs text-slate-300 group-hover:text-amber-400 transition-colors">编辑</span>
-              )}
+            <span className="shrink-0 text-amber-400 text-lg mt-0.5">💬</span>
+            <div className="min-w-0">
+              <div className="text-xs font-semibold text-amber-500 uppercase tracking-wide">推广提示</div>
+              <div className="text-sm text-amber-700 leading-relaxed mt-0.5 whitespace-pre-wrap break-all">{weekNote}</div>
             </div>
+            {isHQ && (
+              <span className="ml-auto shrink-0 text-xs text-slate-300 group-hover:text-amber-400 transition-colors mt-1">编辑</span>
+            )}
           </button>
         ) : isHQ ? (
           <button
