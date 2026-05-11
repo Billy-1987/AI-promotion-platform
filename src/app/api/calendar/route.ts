@@ -42,7 +42,9 @@ export async function POST(req: NextRequest) {
       items = await parseRecommendItems(buffer, itemsRows, sheetIndex)
     }
 
-    const meta = { filename: file.name, uploadedAt: new Date().toISOString(), summary, allRows, headers, items }
+    const existing = existsSync(META_PATH) ? JSON.parse(await readFile(META_PATH, 'utf-8')) : {}
+    const weekNotes: Record<string, string> = existing.weekNotes ?? {}
+    const meta = { filename: file.name, uploadedAt: new Date().toISOString(), summary, allRows, headers, items, weekNotes }
     await writeFile(META_PATH, JSON.stringify(meta, null, 2))
 
     return NextResponse.json({ ok: true, summary })
@@ -56,6 +58,22 @@ export async function GET() {
   if (!existsSync(META_PATH)) return NextResponse.json({ uploaded: false })
   const meta = JSON.parse(await readFile(META_PATH, 'utf-8'))
   return NextResponse.json({ uploaded: true, ...meta })
+}
+
+// ─── 每周提示备注（管理员设置）────────────────────────────────────────────────
+
+export async function PATCH(req: NextRequest) {
+  try {
+    const { weekNotes } = await req.json() as { weekNotes: Record<string, string> }
+    if (!existsSync(META_PATH)) return NextResponse.json({ error: 'No calendar meta found' }, { status: 400 })
+    const meta = JSON.parse(await readFile(META_PATH, 'utf-8'))
+    meta.weekNotes = weekNotes ?? {}
+    await writeFile(META_PATH, JSON.stringify(meta, null, 2))
+    return NextResponse.json({ ok: true })
+  } catch (err) {
+    console.error('[calendar PATCH error]', err)
+    return NextResponse.json({ error: String(err) }, { status: 500 })
+  }
 }
 
 // ─── 运营日历解析 ─────────────────────────────────────────────────────────────

@@ -42,6 +42,7 @@ interface CalendarMeta {
   allRows?: BrandRow[]
   headers?: string[]
   items?: RecommendItem[]
+  weekNotes?: Record<string, string>
 }
 
 function CalendarContent() {
@@ -53,6 +54,9 @@ function CalendarContent() {
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null)
   const [recommendWeek, setRecommendWeek] = useState<string | null>(null)
   const [recommendBrand, setRecommendBrand] = useState<string | null>(null)
+  const [editingNote, setEditingNote] = useState<string | null>(null)
+  const [noteText, setNoteText] = useState('')
+  const [savingNote, setSavingNote] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const isHQ = user?.role === 'hq'
@@ -72,6 +76,15 @@ function CalendarContent() {
     const res = await fetch('/api/calendar')
     const data = await res.json()
     setMeta(data)
+  }
+
+  async function saveNote(week: string, text: string) {
+    setSavingNote(true)
+    const notes = { ...(meta?.weekNotes ?? {}), [week]: text }
+    await fetch('/api/calendar', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ weekNotes: notes }) })
+    setMeta(prev => prev ? { ...prev, weekNotes: notes } : prev)
+    setEditingNote(null)
+    setSavingNote(false)
   }
 
   async function uploadFile(file: File) {
@@ -294,6 +307,9 @@ function CalendarContent() {
                       hasRecommend={weekItems.length > 0}
                       itemBrands={itemBrands}
                       itemBrandCount={itemBrandCount}
+                      weekNote={meta?.weekNotes?.[entry.week] ?? ''}
+                      onEditNote={(week, text) => { setEditingNote(week); setNoteText(text) }}
+                      isHQ={isHQ}
                     />
                   )
                 })}
@@ -311,6 +327,56 @@ function CalendarContent() {
           initialBrand={recommendBrand}
           onClose={() => { setRecommendWeek(null); setRecommendBrand(null) }}
         />
+      )}
+
+      {/* 每周提示备注编辑弹窗 */}
+      {editingNote && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setEditingNote(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">💬 推广提示</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{editingNote} 周次备注</p>
+              </div>
+              <button onClick={() => setEditingNote(null)} className="text-slate-400 hover:text-slate-600 text-2xl w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 transition-colors">×</button>
+            </div>
+            <textarea
+              value={noteText}
+              onChange={e => setNoteText(e.target.value)}
+              placeholder="输入本周的推广注意事项，例如：本周618预售开始，请提前准备主推款素材..."
+              rows={4}
+              className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm text-slate-700 resize-none focus:outline-none focus:ring-2 focus:ring-blue-400 placeholder:text-slate-300"
+            />
+            <div className="flex items-center justify-between">
+              {noteText && (
+                <button
+                  onClick={() => saveNote(editingNote, '')}
+                  disabled={savingNote}
+                  className="px-4 py-2 text-sm font-medium text-red-500 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                >
+                  清除提示
+                </button>
+              )}
+              <div className="flex items-center gap-2 ml-auto">
+                <button
+                  onClick={() => setEditingNote(null)}
+                  className="px-4 py-2 text-sm font-medium text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors"
+                >
+                  取消
+                </button>
+                <button
+                  onClick={() => saveNote(editingNote, noteText)}
+                  disabled={savingNote || !noteText.trim()}
+                  className="px-4 py-2 text-sm font-bold text-white rounded-lg transition-all disabled:opacity-50"
+                  style={{ background: savingNote ? '#6b7280' : '#0034cc' }}
+                >
+                  {savingNote ? '保存中...' : '保存提示'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   )
@@ -331,7 +397,7 @@ const BRAND_COLORS = [
   { bg: 'bg-fuchsia-900/50', border: 'border-fuchsia-700', text: 'text-fuchsia-200', badge: 'bg-fuchsia-700 text-fuchsia-100' },
 ]
 
-function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecommend, itemBrands, itemBrandCount }: {
+function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecommend, itemBrands, itemBrandCount, weekNote, onEditNote, isHQ }: {
   entry: WeekEntry
   currentWeek?: string
   onBrandClick: (week: string, brand: string) => void
@@ -339,6 +405,9 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
   hasRecommend: boolean
   itemBrands: Set<string>
   itemBrandCount: Map<string, number>
+  weekNote?: string
+  onEditNote: (week: string, text: string) => void
+  isHQ?: boolean
 }) {
   return (
     <div className="flex gap-3 items-start">
@@ -390,6 +459,31 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
             )
           })}
         </div>
+        {/* 推广提示气泡 — 品牌网格下方，充分利用空白 */}
+        {weekNote ? (
+          <button
+            onClick={() => onEditNote(entry.week, weekNote)}
+            className="w-full px-6 py-3 text-left border-t border-amber-100 bg-gradient-to-r hover:from-amber-50 hover:to-yellow-50 transition-colors group"
+          >
+            <div className="flex items-center gap-2">
+              <span className="shrink-0 text-amber-400 text-lg">💬</span>
+              <div>
+                <div className="text-xs font-semibold text-amber-500 uppercase tracking-wide">推广提示</div>
+                <div className="text-sm text-amber-700 leading-relaxed mt-0.5">{weekNote}</div>
+              </div>
+              {isHQ && (
+                <span className="ml-auto shrink-0 text-xs text-slate-300 group-hover:text-amber-400 transition-colors">编辑</span>
+              )}
+            </div>
+          </button>
+        ) : isHQ ? (
+          <button
+            onClick={() => onEditNote(entry.week, '')}
+            className="w-full px-6 py-2.5 text-left text-xs text-slate-300 hover:text-amber-500 border-t border-transparent hover:border-amber-100 hover:bg-amber-50/30 transition-all"
+          >
+            + 添加本周推广提示
+          </button>
+        ) : null}
       </div>
     </div>
   )
