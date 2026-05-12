@@ -87,7 +87,9 @@ Three independent LLM calls run **in parallel** via `Promise.allSettled` / `Prom
 
 ## Deployment
 
-**详细策略和验证流程见 [`部署策略.md`](./部署策略.md)。下面只列关键事实，避免上下文重复。**
+**⚠️ AI 助手注意：接到部署/上线请求时，第一件事是用 Read 工具读完整 [`部署策略.md`](./部署策略.md)（含 §3 验证流程和 §8 必做清单）再动手。不要凭记忆操作、不要跳过 monitor 步骤。**
+
+下面只列关键事实，避免上下文重复；细节、回滚、验证 recipe 都在 `部署策略.md` 里。
 
 - 触发方式：`git push origin main` → GitHub Actions（`.github/workflows/deploy.yml`）→ SSH 到服务器自动 rebuild + restart。**不要**手动 `bash deploy.sh`（仅留作应急回退）。
 - 服务器：阿里云 新加坡 `47.95.109.68`，CI 账号 `deployer`，项目路径 `/opt/apps/aipp/`，容器名 `aipp`，端口 `3001`。
