@@ -47,14 +47,66 @@ export interface Sticker {
   url?: string
 }
 
-export const FONTS = [
-  { id: 'calibri',  label: 'Calibri', css: 'Calibri, "PingFang SC", "Microsoft YaHei", sans-serif' },
-  { id: 'yahei',    label: '微软雅黑', css: '"Microsoft YaHei", "PingFang SC", sans-serif' },
-  { id: 'pingfang', label: '苹方',     css: '"PingFang SC", "Microsoft YaHei", sans-serif' },
-  { id: 'simsun',   label: '宋体',     css: 'SimSun, "Songti SC", serif' },
-  { id: 'times',    label: 'Times',   css: '"Times New Roman", Times, serif' },
-  { id: 'impact',   label: 'Impact',  css: 'Impact, sans-serif' },
+// Font picker — Word-style selection. Names below are CSS font-family
+// references, not bundled font files: the browser asks the user's OS for
+// the named face and falls back through the stack if missing. No font
+// binaries are shipped, so trademark / licensing of the named faces is
+// not implicated. Existing IDs (calibri / yahei / pingfang / simsun /
+// times / impact) are preserved so saved templates keep working.
+type FontGroup = 'cjk' | 'sans' | 'serif' | 'mono' | 'display'
+export interface FontDef {
+  id: string
+  label: string
+  css: string
+  group: FontGroup
+}
+
+export const FONTS: FontDef[] = [
+  // 中文（CJK）— system Chinese faces on macOS / Windows / Linux
+  { id: 'pingfang', label: '苹方',        css: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif', group: 'cjk' },
+  { id: 'yahei',    label: '微软雅黑',     css: '"Microsoft YaHei", "PingFang SC", "Source Han Sans SC", sans-serif', group: 'cjk' },
+  { id: 'heiti',    label: '黑体',        css: 'SimHei, "Heiti SC", "PingFang SC", "Microsoft YaHei", sans-serif', group: 'cjk' },
+  { id: 'simsun',   label: '宋体',        css: 'SimSun, "Songti SC", "Source Han Serif SC", serif', group: 'cjk' },
+  { id: 'kaiti',    label: '楷体',        css: 'KaiTi, "Kaiti SC", STKaiti, serif', group: 'cjk' },
+  { id: 'fangsong', label: '仿宋',        css: 'FangSong, STFangsong, serif', group: 'cjk' },
+  { id: 'xingkai',  label: '华文行楷',     css: '"STXingkai", "Xingkai SC", cursive', group: 'cjk' },
+  { id: 'hupo',     label: '华文琥珀',     css: '"STHupo", "Hupo", sans-serif', group: 'cjk' },
+  { id: 'lishu',    label: '隶书',        css: 'LiSu, STLiti, "Baoli SC", serif', group: 'cjk' },
+  { id: 'youyuan',  label: '幼圆',        css: 'YouYuan, "PingFang Rounded", "Yuanti SC", sans-serif', group: 'cjk' },
+
+  // Sans-Serif
+  { id: 'calibri',   label: 'Calibri',       css: 'Calibri, Candara, "Segoe UI", "PingFang SC", sans-serif', group: 'sans' },
+  { id: 'arial',     label: 'Arial',         css: 'Arial, Helvetica, "Liberation Sans", sans-serif', group: 'sans' },
+  { id: 'helvetica', label: 'Helvetica',     css: 'Helvetica, "Helvetica Neue", Arial, sans-serif', group: 'sans' },
+  { id: 'verdana',   label: 'Verdana',       css: 'Verdana, Geneva, "DejaVu Sans", sans-serif', group: 'sans' },
+  { id: 'tahoma',    label: 'Tahoma',        css: 'Tahoma, Geneva, "DejaVu Sans", sans-serif', group: 'sans' },
+  { id: 'trebuchet', label: 'Trebuchet MS',  css: '"Trebuchet MS", "Lucida Grande", Helvetica, sans-serif', group: 'sans' },
+  { id: 'segoe',     label: 'Segoe UI',      css: '"Segoe UI", "Helvetica Neue", Helvetica, sans-serif', group: 'sans' },
+  { id: 'comicsans', label: 'Comic Sans MS', css: '"Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive', group: 'sans' },
+
+  // Serif
+  { id: 'times',    label: 'Times New Roman', css: '"Times New Roman", Times, "Liberation Serif", serif', group: 'serif' },
+  { id: 'georgia',  label: 'Georgia',         css: 'Georgia, "Times New Roman", serif', group: 'serif' },
+  { id: 'cambria',  label: 'Cambria',         css: 'Cambria, Georgia, "Liberation Serif", serif', group: 'serif' },
+  { id: 'garamond', label: 'Garamond',        css: 'Garamond, "EB Garamond", "Cormorant Garamond", serif', group: 'serif' },
+  { id: 'palatino', label: 'Palatino',        css: '"Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", serif', group: 'serif' },
+
+  // Monospace
+  { id: 'courier',  label: 'Courier New',     css: '"Courier New", Courier, "Liberation Mono", monospace', group: 'mono' },
+  { id: 'consolas', label: 'Consolas',        css: 'Consolas, "Cascadia Mono", "Lucida Console", monospace', group: 'mono' },
+
+  // Display
+  { id: 'impact',     label: 'Impact',        css: 'Impact, "Arial Black", "Haettenschweiler", sans-serif', group: 'display' },
+  { id: 'arialblack', label: 'Arial Black',   css: '"Arial Black", "Arial Bold", Gadget, sans-serif', group: 'display' },
 ]
+
+const FONT_GROUP_LABELS: Record<FontGroup, string> = {
+  cjk: '中文',
+  sans: 'Sans-Serif',
+  serif: 'Serif',
+  mono: '等宽',
+  display: '装饰',
+}
 
 export const EMOJI_PALETTE = [
   '⭐','✨','💫','🌟','❤️','🔥','💯','🎉',
@@ -1783,7 +1835,15 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                   onChange={e => setPanelText(p => ({ ...p, font: e.target.value }))}
                   className="flex-1 px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-white text-xs focus:outline-none focus:border-yellow-400"
                 >
-                  {FONTS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                  {(['cjk', 'sans', 'serif', 'mono', 'display'] as const).map(g => {
+                    const items = FONTS.filter(f => f.group === g)
+                    if (items.length === 0) return null
+                    return (
+                      <optgroup key={g} label={FONT_GROUP_LABELS[g]}>
+                        {items.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
+                      </optgroup>
+                    )
+                  })}
                 </select>
               </div>
               <div className="flex items-center gap-2 justify-end">
