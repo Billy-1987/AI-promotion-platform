@@ -27,7 +27,6 @@ export interface Sticker {
   shadowColor?: string
   hasBg?: boolean
   bgColor?: string
-  bgOpacity?: number  // 0..1, defaults to 1
   curve?: number  // 0 or undefined = off; 0.05..0.4 = sagitta ratio
   // Emoji
   char?: string
@@ -77,26 +76,7 @@ export const SHAPES = [
 const DEFAULT_STROKE_COLOR = '#000000'
 const DEFAULT_SHADOW_COLOR = 'rgba(0,0,0,0.55)'
 const DEFAULT_BG_COLOR = '#000000'
-const DEFAULT_BG_OPACITY = 1
 const DEFAULT_CURVE = 0.16  // sagitta ratio when curve is first toggled on
-
-// Apply alpha to a color string. Hex (#rgb/#rrggbb) and rgb()/rgba() supported;
-// anything else is passed through unchanged.
-function withAlpha(color: string, alpha: number): string {
-  const c = (color || '').trim()
-  let m = c.match(/^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)/i)
-  if (m) return `rgba(${m[1]},${m[2]},${m[3]},${alpha})`
-  m = c.match(/^#?([0-9a-f]{3}|[0-9a-f]{6})$/i)
-  if (m) {
-    let h = m[1]
-    if (h.length === 3) h = h.split('').map(x => x + x).join('')
-    const r = parseInt(h.slice(0, 2), 16)
-    const g = parseInt(h.slice(2, 4), 16)
-    const b = parseInt(h.slice(4, 6), 16)
-    return `rgba(${r},${g},${b},${alpha})`
-  }
-  return c
-}
 
 const COLOR_SWATCHES = [
   '#ffffff', '#000000', '#ef4444', '#f97316', '#fceb42',
@@ -209,18 +189,15 @@ function PixelInput({
   unit?: string
 }) {
   const denom = base > 0 ? base : 1000
-  // Treat non-finite ratio (e.g. undefined from stale HMR state) as 0 so the
-  // input is always usable; the first interaction then writes a real value.
-  const safeRatio = Number.isFinite(ratio) ? ratio : 0
-  const currentPx = Math.max(minPx, Math.min(maxPx, Math.round(safeRatio * denom)))
+  const currentPx = Math.max(1, Math.round(ratio * denom))
   // Refs hold latest values so long-press tick handlers always see fresh state
-  const ratioRef = useRef(safeRatio)
-  ratioRef.current = safeRatio
+  const ratioRef = useRef(ratio)
+  ratioRef.current = ratio
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
   const bump = useCallback((delta: number) => {
-    const cur = Math.max(minPx, Math.min(maxPx, Math.round(ratioRef.current * denom)))
+    const cur = Math.max(1, Math.round(ratioRef.current * denom))
     const next = Math.max(minPx, Math.min(maxPx, cur + delta))
     onChangeRef.current(next / denom)
   }, [denom, minPx, maxPx])
@@ -469,8 +446,7 @@ function getTextCss(s: Sticker, displayH: number): React.CSSProperties {
     css.textShadow = `${shadowOff}px ${shadowOff}px ${shadowOff * 1.8}px ${s.shadowColor || DEFAULT_SHADOW_COLOR}`
   }
   if (s.hasBg) {
-    const opacity = s.bgOpacity ?? DEFAULT_BG_OPACITY
-    css.background = withAlpha(s.bgColor || DEFAULT_BG_COLOR, opacity)
+    css.background = s.bgColor || DEFAULT_BG_COLOR
     css.padding = `${px * 0.15}px ${px * 0.35}px`
     css.borderRadius = `${px * 0.2}px`
   }
@@ -758,7 +734,6 @@ interface PanelText {
   shadowColor: string
   hasBg: boolean
   bgColor: string
-  bgOpacity: number
   curve: number
 }
 
@@ -777,7 +752,6 @@ interface TextTemplate {
   shadowColor: string
   hasBg: boolean
   bgColor: string
-  bgOpacity: number
   curve: number
 }
 interface PanelShape {
@@ -820,7 +794,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     shadowColor: DEFAULT_SHADOW_COLOR,
     hasBg: false,
     bgColor: DEFAULT_BG_COLOR,
-    bgOpacity: DEFAULT_BG_OPACITY,
     curve: 0,
   })
   const [panelShape, setPanelShape] = useState<PanelShape>({
@@ -868,7 +841,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       shadowColor: panelText.shadowColor,
       hasBg: panelText.hasBg,
       bgColor: panelText.bgColor,
-      bgOpacity: panelText.bgOpacity,
       curve: panelText.curve,
     }
     persistTemplates([tpl, ...textTemplates].slice(0, 30))
@@ -890,7 +862,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       shadowColor: tpl.shadowColor,
       hasBg: tpl.hasBg,
       bgColor: tpl.bgColor,
-      bgOpacity: tpl.bgOpacity ?? DEFAULT_BG_OPACITY,
       curve: tpl.curve,
     }))
     setCurveActive(tpl.curve > 0)
@@ -922,7 +893,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
           shadowColor: panelText.shadowColor,
           hasBg: panelText.hasBg,
           bgColor: panelText.bgColor,
-          bgOpacity: panelText.bgOpacity,
           curve: panelText.curve,
         }
       }
@@ -1042,7 +1012,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     shadowColor: panelText.shadowColor,
     hasBg: panelText.hasBg,
     bgColor: panelText.bgColor,
-    bgOpacity: panelText.bgOpacity,
     curve: panelText.curve,
     x: 0.5, y: 0.5, rotation: 0, flipH: false, flipV: false,
   })
@@ -1076,7 +1045,6 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       shadowColor: s.shadowColor || DEFAULT_SHADOW_COLOR,
       hasBg: s.hasBg ?? false,
       bgColor: s.bgColor || DEFAULT_BG_COLOR,
-      bgOpacity: s.bgOpacity ?? DEFAULT_BG_OPACITY,
       curve,
     })
     setCurveActive(curve > 0)
@@ -1265,8 +1233,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               const padY = px * 0.15
               const bgW = maxW + padX * 2
               const bgH = blockH + padY * 2
-              const bgOp = s.bgOpacity ?? DEFAULT_BG_OPACITY
-              ctx.fillStyle = withAlpha(s.bgColor || DEFAULT_BG_COLOR, bgOp)
+              ctx.fillStyle = s.bgColor || DEFAULT_BG_COLOR
               roundRect(ctx, -bgW / 2, -bgH / 2, bgW, bgH, px * 0.2)
               ctx.fill()
             }
@@ -1710,7 +1677,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                 {textTemplates.map(t => {
                   const previewPx = 14
                   const wrapperStyle: React.CSSProperties = t.hasBg
-                    ? { background: withAlpha(t.bgColor, t.bgOpacity ?? 1), padding: '2px 4px', borderRadius: 4 }
+                    ? { background: t.bgColor, padding: '2px 4px', borderRadius: 4 }
                     : {}
                   const css = getTextCss({
                     id: t.id, type: 'text', x: 0, y: 0, rotation: 0, flipH: false, flipV: false,
@@ -1951,41 +1918,27 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                 <span className="text-[11px] text-zinc-300">背景</span>
               </label>
               {panelText.hasBg && (
-                <div className="pl-5 space-y-1.5">
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    {COLOR_SWATCHES.map(c => (
-                      <button
-                        key={c}
-                        onClick={() => setPanelText(p => ({ ...p, bgColor: c }))}
-                        className={`w-5 h-5 rounded-full border-2 ${
-                          panelText.bgColor.toLowerCase() === c.toLowerCase() ? 'border-yellow-400 scale-110' : 'border-zinc-700'
-                        }`}
-                        style={{ background: c }}
-                        aria-label={c}
-                      />
-                    ))}
-                    <label className="w-5 h-5 rounded-full border-2 border-dashed border-zinc-600 flex items-center justify-center cursor-pointer text-zinc-400 text-[10px] overflow-hidden">
-                      ＋
-                      <input
-                        type="color"
-                        value={panelText.bgColor.startsWith('#') ? panelText.bgColor : '#000000'}
-                        onChange={e => setPanelText(p => ({ ...p, bgColor: e.target.value }))}
-                        className="opacity-0 w-0 h-0"
-                      />
-                    </label>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-zinc-500">透明度</span>
-                    <PixelInput
-                      ratio={panelText.bgOpacity ?? DEFAULT_BG_OPACITY}
-                      base={100}
-                      minPx={0}
-                      maxPx={100}
-                      onChange={r => setPanelText(p => ({ ...p, bgOpacity: r }))}
-                      unit="%"
-                      inputWidth={48}
+                <div className="flex items-center gap-1.5 pl-5 flex-wrap">
+                  {COLOR_SWATCHES.map(c => (
+                    <button
+                      key={c}
+                      onClick={() => setPanelText(p => ({ ...p, bgColor: c }))}
+                      className={`w-5 h-5 rounded-full border-2 ${
+                        panelText.bgColor.toLowerCase() === c.toLowerCase() ? 'border-yellow-400 scale-110' : 'border-zinc-700'
+                      }`}
+                      style={{ background: c }}
+                      aria-label={c}
                     />
-                  </div>
+                  ))}
+                  <label className="w-5 h-5 rounded-full border-2 border-dashed border-zinc-600 flex items-center justify-center cursor-pointer text-zinc-400 text-[10px] overflow-hidden">
+                    ＋
+                    <input
+                      type="color"
+                      value={panelText.bgColor.startsWith('#') ? panelText.bgColor : '#000000'}
+                      onChange={e => setPanelText(p => ({ ...p, bgColor: e.target.value }))}
+                      className="opacity-0 w-0 h-0"
+                    />
+                  </label>
                 </div>
               )}
             </div>
