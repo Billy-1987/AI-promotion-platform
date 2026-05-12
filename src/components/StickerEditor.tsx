@@ -209,15 +209,18 @@ function PixelInput({
   unit?: string
 }) {
   const denom = base > 0 ? base : 1000
-  const currentPx = Math.max(minPx, Math.round(ratio * denom))
+  // Treat non-finite ratio (e.g. undefined from stale HMR state) as 0 so the
+  // input is always usable; the first interaction then writes a real value.
+  const safeRatio = Number.isFinite(ratio) ? ratio : 0
+  const currentPx = Math.max(minPx, Math.min(maxPx, Math.round(safeRatio * denom)))
   // Refs hold latest values so long-press tick handlers always see fresh state
-  const ratioRef = useRef(ratio)
-  ratioRef.current = ratio
+  const ratioRef = useRef(safeRatio)
+  ratioRef.current = safeRatio
   const onChangeRef = useRef(onChange)
   onChangeRef.current = onChange
 
   const bump = useCallback((delta: number) => {
-    const cur = Math.max(minPx, Math.round(ratioRef.current * denom))
+    const cur = Math.max(minPx, Math.min(maxPx, Math.round(ratioRef.current * denom)))
     const next = Math.max(minPx, Math.min(maxPx, cur + delta))
     onChangeRef.current(next / denom)
   }, [denom, minPx, maxPx])
@@ -1974,7 +1977,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                   <div className="flex items-center gap-2">
                     <span className="text-[10px] text-zinc-500">透明度</span>
                     <PixelInput
-                      ratio={panelText.bgOpacity}
+                      ratio={panelText.bgOpacity ?? DEFAULT_BG_OPACITY}
                       base={100}
                       minPx={0}
                       maxPx={100}
