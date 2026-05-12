@@ -49,6 +49,7 @@ jobs:
             mkdir -p ${{ secrets.REMOTE_DIR }}/data/images || true
 
             docker rm -f aipp 2>/dev/null || true
+            docker builder prune -af 2>/dev/null || true
             docker build --no-cache -t aipp .
             docker rm -f aipp 2>/dev/null || true
             docker run -d --name aipp -p 3001:3001 --env-file ${{ secrets.REMOTE_DIR }}/.env \
@@ -59,10 +60,33 @@ jobs:
             sleep 2
             docker exec -u root aipp chmod 777 /app/data/images 2>/dev/null || true
 
-            docker run --rm -v /etc/nginx/conf.d:/nginx_conf alpine \
-              sed -i 's/client_max_body_size [0-9]*m/client_max_body_size 200m/' /nginx_conf/aipp.conf
+            docker run --rm -v /etc/nginx/conf.d:/nginx_conf alpine sh -c '
+              CONF=/nginx_conf/aipp.conf
+              if [ ! -f \"\$CONF\" ]; then
+                echo \"[deploy] nginx config \$CONF 不存在，跳过修改\"
+                exit 0
+              fi
+              cp \"\$CONF\" \"\$CONF.bak.\$(date +%s)\"
+              if grep -q \"client_max_body_size\" \"\$CONF\"; then
+                sed -i \"s/client_max_body_size [0-9]*[mMkKgG];/client_max_body_size 200m;/\" \"\$CONF\"
+              else
+                sed -i \"/server {/a\\    client_max_body_size 200m;\" \"\$CONF\"
+              fi
+              if grep -q \"proxy_read_timeout\" \"\$CONF\"; then
+                sed -i \"s/proxy_read_timeout [0-9]*s\\?;/proxy_read_timeout 300s;/\" \"\$CONF\"
+              else
+                sed -i \"/server {/a\\    proxy_read_timeout 300s;\" \"\$CONF\"
+              fi
+              if grep -q \"proxy_send_timeout\" \"\$CONF\"; then
+                sed -i \"s/proxy_send_timeout [0-9]*s\\?;/proxy_send_timeout 300s;/\" \"\$CONF\"
+              else
+                sed -i \"/server {/a\\    proxy_send_timeout 300s;\" \"\$CONF\"
+              fi
+              echo \"[deploy] nginx config updated:\"
+              grep -E \"client_max_body_size|proxy_(read|send)_timeout\" \"\$CONF\" || true
+            '
             docker run --rm --privileged --pid=host alpine \
-              nsenter -t 1 -m -u -i -n -- nginx -s reload 2>/dev/null || true
+              nsenter -t 1 -m -u -i -n -- sh -c 'nginx -t && nginx -s reload' 2>&1 | tail -5 || true
 
             docker logs aipp 2>&1 | tail -5
           "

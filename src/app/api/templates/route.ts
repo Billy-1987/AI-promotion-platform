@@ -103,8 +103,8 @@ export async function GET(req: NextRequest) {
   const variant = parseInt(searchParams.get('variant') ?? '0', 10)
   const force = searchParams.get('force') === '1'
 
-  if (!process.env.OPENROUTER_API_KEY) {
-    return NextResponse.json({ url: null, error: 'Missing OPENROUTER_API_KEY' }, { status: 500 })
+  if (!process.env.MODELVERSE_API_KEY) {
+    return NextResponse.json({ url: null, error: 'Missing MODELVERSE_API_KEY' }, { status: 500 })
   }
 
   const entry = PROMPT_MAP[topic]

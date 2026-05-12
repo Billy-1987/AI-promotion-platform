@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
 import { makeLogger, formatBytes } from '@/lib/logger'
 
 export const maxDuration = 300
+
+type ChatContentPart =
+  | { type: 'text'; text: string }
+  | { type: 'image_url'; image_url: { url: string } }
 
 const STYLE_LABELS: Record<string, string> = {
   sport: 'sportswear', outdoor: 'outdoor', menswear: "men's fashion",
@@ -87,7 +90,7 @@ async function describeClothing(b64: string, mime: string, isShoes: boolean): Pr
       content: [
         { type: 'image_url', image_url: { url: `data:${mime};base64,${b64}` } },
         { type: 'text', text: prompt },
-      ] as OpenAI.Chat.ChatCompletionContentPart[],
+      ] as ChatContentPart[],
     }],
   })
   return res.choices[0]?.message?.content?.trim() ?? ''
@@ -197,7 +200,7 @@ export async function POST(req: NextRequest) {
         content: [
           { type: 'image_url', image_url: { url: `data:${mime};base64,${clothingBase64}` } },
           { type: 'text', text: ANALYZE_PROMPT },
-        ] as OpenAI.Chat.ChatCompletionContentPart[],
+        ] as ChatContentPart[],
       }],
     }).catch(() => null),
 
@@ -214,7 +217,7 @@ export async function POST(req: NextRequest) {
               ? `分析这双鞋的设计特点和适合场景。返回纯JSON（无markdown）：{"description":"80字内专业描述","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`
               : `分析这件${styleZhLabel}服装的版型特点和适合人群。返回纯JSON（无markdown）：{"description":"80字内专业描述","fitScore":85,"styleMatch":"风格特点","occasion":"适合场合"}`,
           },
-        ] as OpenAI.Chat.ChatCompletionContentPart[],
+        ] as ChatContentPart[],
       }],
     }).catch(() => null),
   ])

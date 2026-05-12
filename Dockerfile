@@ -5,7 +5,7 @@ RUN npm install
 COPY . .
 # Remove any cached build artifacts so Next.js always does a full fresh compile
 RUN rm -rf .next
-ENV OPENROUTER_API_KEY=dummy-build-key
+ENV MODELVERSE_API_KEY=dummy-build-key
 RUN npm run build
 
 FROM node:20-alpine

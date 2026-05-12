@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
 import { openrouter as client } from '@/lib/openrouter'
 import { makeLogger, formatBytes } from '@/lib/logger'
 

@@ -1,18 +1,7 @@
-// Unified AI client. Switch provider via AI_PROVIDER env var:
-//   AI_PROVIDER=openrouter  (default) — OpenAI SDK → openrouter.ai
-//   AI_PROVIDER=modelverse            — Gemini-native fetch → api.modelverse.cn
-//
-// All route files use OpenAI-format params; the modelverse branch adapts them internally.
+// AI client → Modelverse (Gemini-native). All route files use OpenAI-format
+// chat.completions.create params; this adapter translates to/from Gemini.
 
-import OpenAI from 'openai'
-
-const PROVIDER = process.env.AI_PROVIDER ?? 'openrouter'
-const API_KEY = PROVIDER === 'modelverse'
-  ? (process.env.MODELVERSE_API_KEY ?? process.env.OPENROUTER_API_KEY ?? 'dummy-build-key')
-  : (process.env.OPENROUTER_API_KEY ?? 'dummy-build-key')
-
-// ── Modelverse (Gemini-native) adapter ────────────────────────────────────────
-
+const API_KEY = process.env.MODELVERSE_API_KEY ?? 'dummy-build-key'
 const MODELVERSE_BASE = 'https://api.modelverse.cn'
 
 const MODEL_MAP: Record<string, string> = {
@@ -105,49 +94,10 @@ async function modelverseCreate(params: Record<string, unknown>) {
   return toOAIResponse(await res.json() as Record<string, unknown>)
 }
 
-// ── OpenRouter (OpenAI-compatible) client ─────────────────────────────────────
-
-function createOpenRouterClient() {
-  // 用 eval('require') 绕过 Turbopack 静态分析，避免生产构建报 Module not found
-  const proxyUrl = process.env.HTTPS_PROXY || process.env.HTTP_PROXY
-  if (proxyUrl) {
-    try {
-      const dynamicRequire = eval('require') as NodeRequire
-      const { HttpsProxyAgent } = dynamicRequire('https-proxy-agent')
-      const agent = new HttpsProxyAgent(proxyUrl)
-      return new OpenAI({
-        baseURL: 'https://openrouter.ai/api/v1',
-        apiKey: API_KEY,
-        httpAgent: agent,
-        fetchOptions: { agent },
-      } as ConstructorParameters<typeof OpenAI>[0])
-    } catch (e) {
-      console.warn('[openrouter] HTTPS_PROXY set but https-proxy-agent unavailable, ignoring proxy:', e)
-    }
-  }
-  return new OpenAI({ baseURL: 'https://openrouter.ai/api/v1', apiKey: API_KEY })
+export const openrouter = {
+  chat: {
+    completions: {
+      create: (params: unknown) => modelverseCreate(params as Record<string, unknown>),
+    },
+  },
 }
-
-// ── Export ────────────────────────────────────────────────────────────────────
-
-// Modelverse: direct adapter object
-// OpenRouter: lazy singleton proxy — defers initialization so build/SSR doesn't
-//   fail when OPENROUTER_API_KEY isn't set at module load time
-let _orClient: OpenAI | null = null
-
-export const openrouter =
-  PROVIDER === 'modelverse'
-    ? {
-        chat: {
-          completions: {
-            create: (params: unknown) => modelverseCreate(params as Record<string, unknown>),
-          },
-        },
-      }
-    : new Proxy({} as OpenAI, {
-        get(_target, prop) {
-          if (!_orClient) _orClient = createOpenRouterClient()
-          const value = (_orClient as unknown as Record<string | symbol, unknown>)[prop as string]
-          return typeof value === 'function' ? (value as (...args: unknown[]) => unknown).bind(_orClient) : value
-        },
-      })
