@@ -19,6 +19,8 @@ export interface Sticker {
   bold?: boolean
   italic?: boolean
   underline?: boolean
+  strike?: boolean
+  strikeColor?: string
   align?: 'left' | 'center' | 'right'
   // Text effects (each independent toggle)
   hasStroke?: boolean
@@ -76,6 +78,7 @@ export const SHAPES = [
 const DEFAULT_STROKE_COLOR = '#000000'
 const DEFAULT_SHADOW_COLOR = 'rgba(0,0,0,0.55)'
 const DEFAULT_BG_COLOR = '#000000'
+const DEFAULT_STRIKE_COLOR = '#ffffff'
 const DEFAULT_CURVE = 0.16  // sagitta ratio when curve is first toggled on
 
 const COLOR_SWATCHES = [
@@ -403,7 +406,6 @@ function CurvedTextSvg({ sticker, fontPx }: { sticker: Sticker; fontPx: number }
         fontFamily={fontCss}
         fontWeight={sticker.bold ? 800 : 400}
         fontStyle={sticker.italic ? 'italic' : 'normal'}
-        textDecoration={sticker.underline ? 'underline' : 'none'}
         fill={sticker.color || '#ffffff'}
         stroke={useStroke ? (sticker.strokeColor || DEFAULT_STROKE_COLOR) : 'none'}
         strokeWidth={useStroke ? strokeW * 2 : 0}
@@ -411,7 +413,26 @@ function CurvedTextSvg({ sticker, fontPx }: { sticker: Sticker; fontPx: number }
         filter={useShadow ? `url(#${shadowId})` : undefined}
       >
         <textPath href={`#${pathId}`} startOffset="50%" textAnchor="middle">
-          {t}
+          {(() => {
+            let node: React.ReactNode = t
+            if (sticker.strike) {
+              node = (
+                <tspan style={{
+                  textDecorationLine: 'line-through',
+                  textDecorationColor: sticker.strikeColor || DEFAULT_STRIKE_COLOR,
+                }}>{node}</tspan>
+              )
+            }
+            if (sticker.underline) {
+              node = (
+                <tspan style={{
+                  textDecorationLine: 'underline',
+                  textDecorationColor: 'currentColor',
+                }}>{node}</tspan>
+              )
+            }
+            return node
+          })()}
         </textPath>
       </text>
     </svg>
@@ -435,7 +456,8 @@ function getTextCss(s: Sticker, displayH: number): React.CSSProperties {
     textAlign: s.align || 'center',
     lineHeight: 1.15,
   }
-  if (s.underline) css.textDecoration = 'underline'
+  // underline / strike are rendered via nested spans in JSX so each can have
+  // its own color; nothing to set here.
   if (s.hasStroke) {
     css.WebkitTextStroke = `${strokeW}px ${s.strokeColor || DEFAULT_STROKE_COLOR}`
     // paint-order ensures stroke paints first, then fill on top — so the
@@ -612,7 +634,30 @@ function StickerItem({ sticker, selected, displaySize, onSelect, onUpdate, onCom
     if ((sticker.curve || 0) > 0) {
       inner = <CurvedTextSvg sticker={sticker} fontPx={(sticker.sizeRatio || 0.06) * displaySize.h} />
     } else {
-      inner = <div style={getTextCss(sticker, displaySize.h)}>{sticker.text || '文字'}</div>
+      // Nested spans let underline and line-through carry independent colors:
+      // browsers tie text-decoration-color to the element bearing the decoration,
+      // so each decoration sits on its own span with its own color.
+      const text = sticker.text || '文字'
+      let node: React.ReactNode = text
+      if (sticker.strike) {
+        node = (
+          <span style={{
+            textDecorationLine: 'line-through',
+            textDecorationColor: sticker.strikeColor || DEFAULT_STRIKE_COLOR,
+            textDecorationThickness: 'auto',
+          }}>{node}</span>
+        )
+      }
+      if (sticker.underline) {
+        node = (
+          <span style={{
+            textDecorationLine: 'underline',
+            textDecorationColor: 'currentColor',
+            textDecorationThickness: 'auto',
+          }}>{node}</span>
+        )
+      }
+      inner = <div style={getTextCss(sticker, displaySize.h)}>{node}</div>
     }
   } else if (sticker.type === 'emoji') {
     inner = (
@@ -726,6 +771,8 @@ interface PanelText {
   bold: boolean
   italic: boolean
   underline: boolean
+  strike: boolean
+  strikeColor: string
   sizeRatio: number
   align: 'left' | 'center' | 'right'
   hasStroke: boolean
@@ -744,6 +791,8 @@ interface TextTemplate {
   bold: boolean
   italic: boolean
   underline: boolean
+  strike: boolean
+  strikeColor: string
   sizeRatio: number
   align: 'left' | 'center' | 'right'
   hasStroke: boolean
@@ -786,6 +835,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     bold: false,
     italic: false,
     underline: false,
+    strike: false,
+    strikeColor: DEFAULT_STRIKE_COLOR,
     sizeRatio: 0.06,
     align: 'center',
     hasStroke: false,
@@ -833,6 +884,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       bold: panelText.bold,
       italic: panelText.italic,
       underline: panelText.underline,
+      strike: panelText.strike,
+      strikeColor: panelText.strikeColor,
       sizeRatio: panelText.sizeRatio,
       align: panelText.align,
       hasStroke: panelText.hasStroke,
@@ -854,6 +907,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       bold: tpl.bold,
       italic: tpl.italic,
       underline: tpl.underline,
+      strike: tpl.strike,
+      strikeColor: tpl.strikeColor,
       sizeRatio: tpl.sizeRatio,
       align: tpl.align,
       hasStroke: tpl.hasStroke,
@@ -885,6 +940,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
           bold: panelText.bold,
           italic: panelText.italic,
           underline: panelText.underline,
+          strike: panelText.strike,
+          strikeColor: panelText.strikeColor,
           sizeRatio: panelText.sizeRatio,
           align: panelText.align,
           hasStroke: panelText.hasStroke,
@@ -1004,6 +1061,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     bold: panelText.bold,
     italic: panelText.italic,
     underline: panelText.underline,
+    strike: panelText.strike,
+    strikeColor: panelText.strikeColor,
     sizeRatio: panelText.sizeRatio,
     align: panelText.align,
     hasStroke: panelText.hasStroke,
@@ -1037,6 +1096,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       bold: s.bold ?? false,
       italic: s.italic ?? false,
       underline: s.underline ?? false,
+      strike: s.strike ?? false,
+      strikeColor: s.strikeColor || DEFAULT_STRIKE_COLOR,
       sizeRatio: s.sizeRatio || 0.06,
       align: s.align || 'center',
       hasStroke: s.hasStroke ?? false,
@@ -1256,12 +1317,13 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
 
             clearShadow()
 
-            // 5. Underline per line (drawn last so it sits above any stroke)
-            if (s.underline) {
-              ctx.strokeStyle = s.color || '#ffffff'
+            // 5. Underline / strike per line (drawn last so they sit above any stroke).
+            //    Each decoration uses its own color: underline = text color, strike = strikeColor.
+            const drawHorizLine = (color: string, yOffset: number) => {
+              ctx.strokeStyle = color
               ctx.lineWidth = Math.max(1, px * 0.06)
               for (let i = 0; i < lines.length; i++) {
-                const lineY = firstY + i * lineH + px * 0.42
+                const lineY = firstY + i * lineH + yOffset
                 const w = ctx.measureText(lines[i]).width
                 let xStart: number, xEnd: number
                 if (align === 'left') { xStart = anchorX; xEnd = anchorX + w }
@@ -1273,6 +1335,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                 ctx.stroke()
               }
             }
+            if (s.underline) drawHorizLine(s.color || '#ffffff', px * 0.42)
+            if (s.strike)    drawHorizLine(s.strikeColor || DEFAULT_STRIKE_COLOR, -px * 0.05)
           }
         } else if (s.type === 'emoji') {
           const px = Math.round((s.sizeRatio || 0.12) * canvas.height)
@@ -1682,6 +1746,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                   const css = getTextCss({
                     id: t.id, type: 'text', x: 0, y: 0, rotation: 0, flipH: false, flipV: false,
                     font: t.font, color: t.color, bold: t.bold, italic: t.italic, underline: t.underline,
+                    strike: t.strike, strikeColor: t.strikeColor,
                     sizeRatio: previewPx / 100, align: 'center',
                     hasStroke: t.hasStroke, strokeColor: t.strokeColor,
                     hasShadow: false, shadowColor: t.shadowColor,
@@ -1733,7 +1798,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               </div>
             </div>
 
-            {/* Format toggles: B / I / U */}
+            {/* Format toggles: B / I / U / S */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-zinc-500 w-10 flex-shrink-0">格式</span>
               <div className="flex gap-1.5">
@@ -1741,6 +1806,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                   { key: 'bold' as const,      label: 'B', cls: 'font-bold' },
                   { key: 'italic' as const,    label: 'I', cls: 'italic' },
                   { key: 'underline' as const, label: 'U', cls: 'underline' },
+                  { key: 'strike' as const,    label: 'S', cls: 'line-through' },
                 ]).map(f => {
                   const active = panelText[f.key]
                   return (
@@ -1757,6 +1823,33 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                 })}
               </div>
             </div>
+
+            {/* Strike color (shown only when 删除线 is on) */}
+            {panelText.strike && (
+              <div className="flex items-center gap-1.5 pl-12 flex-wrap">
+                <span className="text-[10px] text-zinc-500 mr-1">删除线色</span>
+                {COLOR_SWATCHES.map(c => (
+                  <button
+                    key={c}
+                    onClick={() => setPanelText(p => ({ ...p, strikeColor: c }))}
+                    className={`w-5 h-5 rounded-full border-2 ${
+                      panelText.strikeColor.toLowerCase() === c.toLowerCase() ? 'border-yellow-400 scale-110' : 'border-zinc-700'
+                    }`}
+                    style={{ background: c }}
+                    aria-label={c}
+                  />
+                ))}
+                <label className="w-5 h-5 rounded-full border-2 border-dashed border-zinc-600 flex items-center justify-center cursor-pointer text-zinc-400 text-[10px] overflow-hidden">
+                  ＋
+                  <input
+                    type="color"
+                    value={panelText.strikeColor.startsWith('#') ? panelText.strikeColor : '#ffffff'}
+                    onChange={e => setPanelText(p => ({ ...p, strikeColor: e.target.value }))}
+                    className="opacity-0 w-0 h-0"
+                  />
+                </label>
+              </div>
+            )}
 
             <div className="flex items-center gap-2">
               <span className="text-[11px] text-zinc-500 w-10 flex-shrink-0">颜色</span>
