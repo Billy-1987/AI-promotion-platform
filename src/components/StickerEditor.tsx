@@ -108,6 +108,65 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 }
 
 // =====================================================================
+// useLongPress — fires `action` immediately on pointerdown, then again on
+// an interval after a short hold delay. `release` (optional) fires once
+// on pointerup/leave/cancel if any tick happened.
+// =====================================================================
+
+function useLongPress(
+  action: () => void,
+  release?: () => void,
+  opts: { initialDelay?: number; interval?: number } = {}
+) {
+  const { initialDelay = 350, interval = 55 } = opts
+  const actionRef = useRef(action)
+  const releaseRef = useRef(release)
+  actionRef.current = action
+  releaseRef.current = release
+
+  const timersRef = useRef<{
+    initial?: ReturnType<typeof setTimeout>
+    tick?: ReturnType<typeof setInterval>
+  }>({})
+  const activeRef = useRef(false)
+
+  const stop = useCallback(() => {
+    if (timersRef.current.initial) clearTimeout(timersRef.current.initial)
+    if (timersRef.current.tick) clearInterval(timersRef.current.tick)
+    timersRef.current = {}
+    if (activeRef.current) {
+      activeRef.current = false
+      releaseRef.current?.()
+    }
+  }, [])
+
+  useEffect(() => () => {
+    if (timersRef.current.initial) clearTimeout(timersRef.current.initial)
+    if (timersRef.current.tick) clearInterval(timersRef.current.tick)
+  }, [])
+
+  const onPointerDown = useCallback((e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return
+    e.preventDefault()
+    activeRef.current = true
+    actionRef.current()
+    timersRef.current.initial = setTimeout(() => {
+      timersRef.current.tick = setInterval(() => actionRef.current(), interval)
+    }, initialDelay)
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
+    } catch {}
+  }, [initialDelay, interval])
+
+  return {
+    onPointerDown,
+    onPointerUp: stop,
+    onPointerLeave: stop,
+    onPointerCancel: stop,
+  }
+}
+
+// =====================================================================
 // PixelInput — number input + ±1 buttons. value/onChange use ratio,
 // UI works in pixels via the provided base.
 // =====================================================================
@@ -131,17 +190,33 @@ function PixelInput({
 }) {
   const denom = base > 0 ? base : 1000
   const currentPx = Math.max(1, Math.round(ratio * denom))
+  // Refs hold latest values so long-press tick handlers always see fresh state
+  const ratioRef = useRef(ratio)
+  ratioRef.current = ratio
+  const onChangeRef = useRef(onChange)
+  onChangeRef.current = onChange
+
+  const bump = useCallback((delta: number) => {
+    const cur = Math.max(1, Math.round(ratioRef.current * denom))
+    const next = Math.max(minPx, Math.min(maxPx, cur + delta))
+    onChangeRef.current(next / denom)
+  }, [denom, minPx, maxPx])
+
+  const decBind = useLongPress(() => bump(-1))
+  const incBind = useLongPress(() => bump(1))
+
   const set = (n: number) => {
     if (isNaN(n)) return
     const clamped = Math.max(minPx, Math.min(maxPx, n))
     onChange(clamped / denom)
   }
+
   return (
     <div className="inline-flex items-center gap-1">
       <button
         type="button"
-        onClick={() => set(currentPx - 1)}
-        className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 text-white text-sm leading-none"
+        {...decBind}
+        className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 text-white text-sm leading-none select-none touch-none"
       >−</button>
       <div className="relative">
         <input
@@ -158,8 +233,59 @@ function PixelInput({
       </div>
       <button
         type="button"
-        onClick={() => set(currentPx + 1)}
-        className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 text-white text-sm leading-none"
+        {...incBind}
+        className="w-6 h-6 rounded bg-zinc-800 border border-zinc-700 text-white text-sm leading-none select-none touch-none"
+      >+</button>
+    </div>
+  )
+}
+
+// =====================================================================
+// RotationStepper — ±1° with long-press support. Live ticks go through
+// onLiveBump (no history), pointerup triggers onCommit once. Manual number
+// input goes through onSetExact (commits immediately).
+// =====================================================================
+
+function RotationStepper({
+  value,
+  onLiveBump,
+  onCommit,
+  onSetExact,
+}: {
+  value: number
+  onLiveBump: (delta: number) => void
+  onCommit: () => void
+  onSetExact: (n: number) => void
+}) {
+  const decBind = useLongPress(() => onLiveBump(-1), onCommit)
+  const incBind = useLongPress(() => onLiveBump(1), onCommit)
+  return (
+    <div className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 h-8 bg-zinc-700 rounded-md text-xs text-white">
+      <span className="text-zinc-300">旋转</span>
+      <button
+        {...decBind}
+        className="w-5 h-5 rounded bg-zinc-800 border border-zinc-600 text-white text-xs leading-none select-none touch-none"
+      >−</button>
+      <div className="relative">
+        <input
+          type="number"
+          value={Math.round(value)}
+          min={0}
+          max={359}
+          step={1}
+          onChange={e => {
+            const n = parseInt(e.target.value, 10)
+            if (isNaN(n)) return
+            onSetExact(((n % 360) + 360) % 360)
+          }}
+          className="h-5 pl-1 pr-3 bg-zinc-800 border border-zinc-600 rounded text-white text-xs font-mono text-center"
+          style={{ width: 44 }}
+        />
+        <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-[9px] text-zinc-400">°</span>
+      </div>
+      <button
+        {...incBind}
+        className="w-5 h-5 rounded bg-zinc-800 border border-zinc-600 text-white text-xs leading-none select-none touch-none"
       >+</button>
     </div>
   )
@@ -238,8 +364,8 @@ function CurvedTextSvg({ sticker, fontPx }: { sticker: Sticker; fontPx: number }
   const fontCss = FONTS.find(f => f.id === sticker.font)?.css || FONTS[0].css
   const charW = fontPx * 0.62
   const totalW = Math.max(charW, charW * t.length)
-  const sagRatio = Math.max(0.02, Math.min(0.5, sticker.curve || DEFAULT_CURVE))
-  const sag = Math.max(fontPx * 0.2, totalW * sagRatio)
+  const sagRatio = Math.max(0, Math.min(0.5, sticker.curve || DEFAULT_CURVE))
+  const sag = Math.max(0.5, totalW * sagRatio)
   const padX = Math.max(8, fontPx * 0.4)
   const padTop = Math.max(8, sag * 0.6 + fontPx * 0.15)
   const padBottom = Math.max(8, fontPx * 0.3)
@@ -680,6 +806,10 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
   const [editingEmojiId, setEditingEmojiId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
 
+  // Whether the curve effect row is expanded. Decoupled from `panelText.curve > 0`
+  // so the user can drag the slider all the way to 0 without the row collapsing.
+  const [curveActive, setCurveActive] = useState(false)
+
   // Text templates persisted in localStorage
   const [textTemplates, setTextTemplates] = useState<TextTemplate[]>([])
 
@@ -734,6 +864,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       bgColor: tpl.bgColor,
       curve: tpl.curve,
     }))
+    setCurveActive(tpl.curve > 0)
   }
 
   const deleteTextTemplate = (id: string) => {
@@ -898,6 +1029,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
 
   const editExistingText = (s: Sticker) => {
     setEditingTextId(s.id)
+    const curve = s.curve || 0
     setPanelText({
       content: s.text || '',
       font: s.font || 'calibri',
@@ -913,8 +1045,9 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       shadowColor: s.shadowColor || DEFAULT_SHADOW_COLOR,
       hasBg: s.hasBg ?? false,
       bgColor: s.bgColor || DEFAULT_BG_COLOR,
-      curve: s.curve || 0,
+      curve,
     })
+    setCurveActive(curve > 0)
     setActiveTab('text')
   }
 
@@ -1050,8 +1183,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
             const chars = Array.from(flat || '文字')
             const widths = chars.map(c => ctx.measureText(c).width || px * 0.5)
             const totalW = widths.reduce((a, b) => a + b, 0)
-            const sagRatio = Math.max(0.02, Math.min(0.5, s.curve || DEFAULT_CURVE))
-            const sag = Math.max(px * 0.2, totalW * sagRatio)
+            const sagRatio = Math.max(0, Math.min(0.5, s.curve || DEFAULT_CURVE))
+            const sag = Math.max(0.5, totalW * sagRatio)
             const R = (totalW * totalW + 4 * sag * sag) / (8 * sag)
             ctx.textAlign = 'center'
             ctx.textBaseline = 'middle'
@@ -1384,41 +1517,19 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               ✎ 编辑图案
             </button>
           )}
-          <div className="flex-shrink-0 inline-flex items-center gap-1 px-1.5 h-8 bg-zinc-700 rounded-md text-xs text-white">
-            <span className="text-zinc-300">旋转</span>
-            <button
-              onClick={() => {
-                const next = (((selectedSticker.rotation || 0) - 1) % 360 + 360) % 360
-                updateAndCommit(selectedSticker.id, { rotation: next })
-              }}
-              className="w-5 h-5 rounded bg-zinc-800 border border-zinc-600 text-white text-xs leading-none"
-            >−</button>
-            <div className="relative">
-              <input
-                type="number"
-                value={Math.round(selectedSticker.rotation || 0)}
-                min={0}
-                max={359}
-                step={1}
-                onChange={e => {
-                  const n = parseInt(e.target.value, 10)
-                  if (isNaN(n)) return
-                  const norm = ((n % 360) + 360) % 360
-                  updateAndCommit(selectedSticker.id, { rotation: norm })
-                }}
-                className="h-5 pl-1 pr-3 bg-zinc-800 border border-zinc-600 rounded text-white text-xs font-mono text-center"
-                style={{ width: 44 }}
-              />
-              <span className="pointer-events-none absolute right-0.5 top-1/2 -translate-y-1/2 text-[9px] text-zinc-400">°</span>
-            </div>
-            <button
-              onClick={() => {
-                const next = (((selectedSticker.rotation || 0) + 1) % 360 + 360) % 360
-                updateAndCommit(selectedSticker.id, { rotation: next })
-              }}
-              className="w-5 h-5 rounded bg-zinc-800 border border-zinc-600 text-white text-xs leading-none"
-            >+</button>
-          </div>
+          <RotationStepper
+            value={selectedSticker.rotation || 0}
+            onLiveBump={(delta) => {
+              const id = selectedSticker.id
+              updateLive(prev => prev.map(s => {
+                if (s.id !== id) return s
+                const next = (((s.rotation || 0) + delta) % 360 + 360) % 360
+                return { ...s, rotation: next }
+              }))
+            }}
+            onCommit={commitDraft}
+            onSetExact={(n) => updateAndCommit(selectedSticker.id, { rotation: n })}
+          />
           <button
             onClick={() => updateAndCommit(selectedSticker.id, { flipH: !selectedSticker.flipH })}
             className={`flex-shrink-0 px-3 h-8 text-white text-xs rounded-md ${selectedSticker.flipH ? 'bg-amber-500' : 'bg-zinc-700 hover:bg-zinc-600'}`}
@@ -1615,7 +1726,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                 <PixelInput
                   ratio={panelText.sizeRatio}
                   base={displaySize.h}
-                  minPx={8}
+                  minPx={1}
                   maxPx={Math.max(40, Math.round((displaySize.h || 1000) * 0.5))}
                   onChange={r => setPanelText(p => ({ ...p, sizeRatio: r }))}
                 />
@@ -1752,18 +1863,26 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               <label className="flex items-center gap-2">
                 <input
                   type="checkbox"
-                  checked={panelText.curve > 0}
-                  onChange={e => setPanelText(p => ({ ...p, curve: e.target.checked ? (p.curve || DEFAULT_CURVE) : 0 }))}
+                  checked={curveActive}
+                  onChange={e => {
+                    const on = e.target.checked
+                    setCurveActive(on)
+                    if (on && panelText.curve === 0) {
+                      setPanelText(p => ({ ...p, curve: DEFAULT_CURVE }))
+                    } else if (!on) {
+                      setPanelText(p => ({ ...p, curve: 0 }))
+                    }
+                  }}
                   className="w-3.5 h-3.5 accent-yellow-400"
                 />
                 <span className="text-[11px] text-zinc-300">弯曲</span>
               </label>
-              {panelText.curve > 0 && (
+              {curveActive && (
                 <div className="flex items-center gap-2 pl-5">
                   <span className="text-[10px] text-zinc-500">程度</span>
                   <input
                     type="range"
-                    min={0.05}
+                    min={0}
                     max={0.4}
                     step={0.01}
                     value={panelText.curve}
@@ -1773,13 +1892,13 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                   <input
                     type="number"
                     value={Math.round(panelText.curve * 100)}
-                    min={5}
+                    min={0}
                     max={40}
                     step={1}
                     onChange={e => {
                       const n = parseInt(e.target.value, 10)
                       if (isNaN(n)) return
-                      setPanelText(p => ({ ...p, curve: Math.max(0.05, Math.min(0.4, n / 100)) }))
+                      setPanelText(p => ({ ...p, curve: Math.max(0, Math.min(0.4, n / 100)) }))
                     }}
                     className="w-12 h-6 px-1 bg-zinc-800 border border-zinc-700 rounded text-white text-xs font-mono text-center"
                   />
