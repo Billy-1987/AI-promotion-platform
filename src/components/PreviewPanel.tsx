@@ -6,6 +6,7 @@ import { TryOnStatus, GeminiAnalysis, TryOnResult } from '@/types'
 import { BACKGROUNDS } from '@/lib/mockAI'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import BackgroundSelector from './BackgroundSelector'
+import StickerEditor from './StickerEditor'
 
 interface Props {
   status: TryOnStatus
@@ -72,32 +73,41 @@ export default function PreviewPanel({
   const processingText = isShoes ? 'AI 正在生成鞋子场景图...' : 'AI 正在生成换装效果...'
   const titleText = isShoes ? '场景展示预览' : '换装效果预览'
 
-  // Logo 合成状态
+  // Logo 浮层状态 — 不再预先 bake；显示用 DOM 浮层，下载/进素材编辑器时才合成
   const [withLogo, setWithLogo] = useState(false)
   const [compositing, setCompositing] = useState(false)
-  const [compositedUrl, setCompositedUrl] = useState<string | null>(null)
+  const [logoSrcUrl, setLogoSrcUrl] = useState<string | null>(null)
+  const [logoAspect, setLogoAspect] = useState(1)
   const [logoPos, setLogoPos] = useState({ x: 0.88, y: 0.10 })
+  const [logoScale, setLogoScale] = useState(0.22)
   const [dragging, setDragging] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewAreaRef = useRef<HTMLDivElement>(null)
-  const posterImgRef = useRef<HTMLImageElement | null>(null)
-  const logoImgRef = useRef<HTMLImageElement | null>(null)
+  const resultImgRef = useRef<HTMLImageElement>(null)
+  const logoOverlayRef = useRef<HTMLDivElement>(null)
 
   // 品牌选择
   const [selectedBrand, setSelectedBrand] = useState('none')
   const [customBrand, setCustomBrand] = useState('')
   const [showCustomInput, setShowCustomInput] = useState(false)
 
+  // 素材编辑器
+  const [showStickerEditor, setShowStickerEditor] = useState(false)
+  const [stickerEditedUrl, setStickerEditedUrl] = useState<string | null>(null)
+  const [stickerBaseUrl, setStickerBaseUrl] = useState<string | null>(null)
+
   // 切换结果图时重置
   useEffect(() => {
     setWithLogo(false)
-    setCompositedUrl(null)
-    posterImgRef.current = null
-    logoImgRef.current = null
+    setLogoSrcUrl(null)
+    setLogoAspect(1)
     setSelectedBrand('none')
     setCustomBrand('')
     setShowCustomInput(false)
     setLogoPos({ x: 0.88, y: 0.10 })
+    setLogoScale(0.22)
+    setStickerEditedUrl(null)
+    setStickerBaseUrl(null)
   }, [resultUrl])
 
   function loadImage(src: string): Promise<HTMLImageElement> {
@@ -115,135 +125,143 @@ export default function PreviewPanel({
   }
 
 
-  function redrawCanvas() {
-    const canvas = canvasRef.current
-    if (!canvas || !posterImgRef.current) return
+  // Bake the logo onto the result image at the current pos/scale, return dataURL
+  async function bakeWithLogo(baseUrl: string): Promise<string> {
+    const [poster, logo] = await Promise.all([loadImage(baseUrl), loadImage(logoSrcUrl!)])
+    const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    const poster = posterImgRef.current
-
     canvas.width = poster.naturalWidth
     canvas.height = poster.naturalHeight
     ctx.drawImage(poster, 0, 0)
-
-    if (logoImgRef.current) {
-      const logo = logoImgRef.current
-      const logoW = poster.naturalWidth * 0.22
-      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
-      const logoX = poster.naturalWidth * logoPos.x - logoW / 2
-      const logoY = poster.naturalHeight * logoPos.y - logoH / 2
-      ctx.drawImage(logo, logoX, logoY, logoW, logoH)
-    }
-
-    setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
+    const logoW = poster.naturalWidth * logoScale
+    const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
+    const logoX = poster.naturalWidth * logoPos.x - logoW / 2
+    const logoY = poster.naturalHeight * logoPos.y - logoH / 2
+    ctx.drawImage(logo, logoX, logoY, logoW, logoH)
+    return canvas.toDataURL('image/jpeg', 0.92)
   }
 
-  async function handleAddBigoffsLogo() {
+  async function loadLogoAndShow(url: string, brand: string) {
     if (!resultUrl) return
     setCompositing(true)
     try {
-      const [poster, logo] = await Promise.all([loadImage(resultUrl), loadImage('/bigoffs-logo.png')])
-      posterImgRef.current = poster
-      logoImgRef.current = logo
-      setSelectedBrand('bigoffs')
-      // Draw immediately with the loaded images, don't rely on state update timing
-      const canvas = canvasRef.current!
-      const ctx = canvas.getContext('2d')!
-      canvas.width = poster.naturalWidth
-      canvas.height = poster.naturalHeight
-      ctx.drawImage(poster, 0, 0)
-      const logoW = poster.naturalWidth * 0.22
-      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
-      ctx.drawImage(logo, poster.naturalWidth * logoPos.x - logoW / 2, poster.naturalHeight * logoPos.y - logoH / 2, logoW, logoH)
-      setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
+      const logo = await loadImage(url)
+      setLogoAspect(logo.naturalHeight / logo.naturalWidth)
+      setLogoSrcUrl(url)
+      setSelectedBrand(brand)
       setWithLogo(true)
+      setStickerEditedUrl(null)
     } catch (e) {
-      console.error('Logo compositing failed', e)
+      console.error('Logo load failed', e)
       alert('Logo 加载失败，请检查网络后重试')
     } finally {
       setCompositing(false)
     }
   }
 
+  async function handleAddBigoffsLogo() {
+    await loadLogoAndShow('/bigoffs-logo.png', 'bigoffs')
+  }
+
   async function handleAddOtherLogo() {
-    if (!resultUrl) return
-    const logoUrl = getBrandLogoUrl(selectedBrand, customBrand)
-    if (!logoUrl || selectedBrand === 'none') return
-    setCompositing(true)
-    try {
-      const [poster, logo] = await Promise.all([loadImage(resultUrl), loadImage(logoUrl)])
-      posterImgRef.current = poster
-      logoImgRef.current = logo
-      const canvas = canvasRef.current!
-      const ctx = canvas.getContext('2d')!
-      canvas.width = poster.naturalWidth
-      canvas.height = poster.naturalHeight
-      ctx.drawImage(poster, 0, 0)
-      const logoW = poster.naturalWidth * 0.22
-      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
-      ctx.drawImage(logo, poster.naturalWidth * logoPos.x - logoW / 2, poster.naturalHeight * logoPos.y - logoH / 2, logoW, logoH)
-      setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
-      setWithLogo(true)
-    } catch (e) {
-      console.error('Logo compositing failed', e)
-      alert('Logo 加载失败，请检查品牌域名是否正确')
-    } finally {
-      setCompositing(false)
-    }
+    const url = getBrandLogoUrl(selectedBrand, customBrand)
+    if (!url || selectedBrand === 'none') return
+    await loadLogoAndShow(url, selectedBrand)
   }
 
   function handleRemoveLogo() {
     setWithLogo(false)
-    setCompositedUrl(null)
-    posterImgRef.current = null
-    logoImgRef.current = null
+    setLogoSrcUrl(null)
+    setLogoAspect(1)
   }
 
-  // 拖动时重绘
-  useEffect(() => {
-    if (withLogo && posterImgRef.current) redrawCanvas()
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logoPos])
-
-  function updateLogoPos(clientX: number, clientY: number) {
-    const el = previewAreaRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    let x = Math.max(0.05, Math.min(0.95, (clientX - rect.left) / rect.width))
-    let y = Math.max(0.05, Math.min(0.95, (clientY - rect.top) / rect.height))
-    if (Math.abs(x - 0.5) < 0.03) x = 0.5
-    if (Math.abs(y - 0.5) < 0.03) y = 0.5
-    setLogoPos({ x, y })
-  }
-
-  function handleMouseDown(e: React.MouseEvent) {
-    if (!withLogo) return
-    setDragging(true)
-    updateLogoPos(e.clientX, e.clientY)
-  }
-  function handleMouseMove(e: React.MouseEvent) {
-    if (!dragging) return
-    updateLogoPos(e.clientX, e.clientY)
-  }
-  function handleMouseUp() { setDragging(false) }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    if (!withLogo || e.touches.length !== 1) return
-    setDragging(true)
-    updateLogoPos(e.touches[0].clientX, e.touches[0].clientY)
-  }
-  function handleTouchMove(e: React.TouchEvent) {
-    if (!dragging || e.touches.length !== 1) return
+  // ---- Drag / Resize handlers for logo overlay --------------------
+  function startLogoDrag(e: React.PointerEvent) {
+    if ((e.target as HTMLElement).dataset.handle) return
     e.preventDefault()
-    updateLogoPos(e.touches[0].clientX, e.touches[0].clientY)
+    e.stopPropagation()
+    const overlay = logoOverlayRef.current?.parentElement
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = logoPos.x * rect.width
+    const origY = logoPos.y * rect.height
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+    setDragging(true)
+
+    const onMove = (ev: PointerEvent) => {
+      let nx = Math.max(0.02, Math.min(0.98, (origX + ev.clientX - startX) / rect.width))
+      let ny = Math.max(0.02, Math.min(0.98, (origY + ev.clientY - startY) / rect.height))
+      if (Math.abs(nx - 0.5) < 0.015) nx = 0.5
+      if (Math.abs(ny - 0.5) < 0.015) ny = 0.5
+      setLogoPos({ x: nx, y: ny })
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+      setDragging(false)
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
   }
-  function handleTouchEnd() { setDragging(false) }
+
+  function startLogoResize(e: React.PointerEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = logoOverlayRef.current?.parentElement
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const cx = logoPos.x * rect.width
+    const cy = logoPos.y * rect.height
+    const startDist = Math.hypot(e.clientX - rect.left - cx, e.clientY - rect.top - cy) || 1
+    const baseScale = logoScale
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+
+    const onMove = (ev: PointerEvent) => {
+      const d = Math.hypot(ev.clientX - rect.left - cx, ev.clientY - rect.top - cy)
+      const k = d / startDist
+      setLogoScale(Math.max(0.04, Math.min(0.7, +(baseScale * k).toFixed(4))))
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }
 
   async function handleDownload() {
     if (!resultUrl) return
-    const isLogoVersion = withLogo && compositedUrl
-    const src = isLogoVersion ? compositedUrl! : resultUrl
     const brandLabel = getBrandLabel(selectedBrand, customBrand)
-    const filename = isLogoVersion ? `${brandLabel.replace(/\s+/g, '-')}-result.jpg` : 'result.jpg'
+    const useLogo = withLogo && logoSrcUrl && !stickerEditedUrl
+    let src: string
+    let filename: string
+    if (stickerEditedUrl) {
+      src = stickerEditedUrl
+      filename = 'result-with-stickers.png'
+    } else if (useLogo) {
+      setCompositing(true)
+      try {
+        src = await bakeWithLogo(resultUrl)
+      } finally {
+        setCompositing(false)
+      }
+      filename = `${brandLabel.replace(/\s+/g, '-')}-result.jpg`
+    } else {
+      src = resultUrl
+      filename = 'result.jpg'
+    }
 
     const a = document.createElement('a')
     a.href = src
@@ -258,7 +276,27 @@ export default function PreviewPanel({
     }
   }
 
-  const displaySrc = withLogo && compositedUrl ? compositedUrl : resultUrl
+  async function openStickerEditor() {
+    if (!resultUrl) return
+    if (withLogo && logoSrcUrl && !stickerEditedUrl) {
+      setCompositing(true)
+      try {
+        const baked = await bakeWithLogo(resultUrl)
+        setStickerBaseUrl(baked)
+      } catch (e) {
+        console.error('bake before sticker editor failed', e)
+        setStickerBaseUrl(stickerEditedUrl || resultUrl)
+      } finally {
+        setCompositing(false)
+      }
+    } else {
+      setStickerBaseUrl(stickerEditedUrl || resultUrl)
+    }
+    setShowStickerEditor(true)
+  }
+
+  const displaySrc = stickerEditedUrl || resultUrl
+  const showLogoOverlay = withLogo && !!logoSrcUrl && !stickerEditedUrl
   const activeBrandLabel = getBrandLabel(selectedBrand, customBrand)
 
   return (
@@ -299,40 +337,84 @@ export default function PreviewPanel({
         {status === 'result' && displaySrc && (
           <div
             ref={previewAreaRef}
-            className={`w-full h-full relative ${withLogo ? 'cursor-move' : ''}`}
-            onMouseDown={handleMouseDown}
-            onMouseMove={handleMouseMove}
-            onMouseUp={handleMouseUp}
-            onMouseLeave={handleMouseUp}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
+            className="relative inline-block max-w-full max-h-full"
           >
             <img
+              ref={resultImgRef}
               src={displaySrc}
               alt="result"
-              className="w-full h-full object-cover select-none"
               draggable={false}
+              className="block max-w-full select-none"
+              style={{ maxHeight: 'min(70vh, calc(100vh - 220px))' }}
             />
-            {/* 辅助线 */}
-            {dragging && (
-              <div className="absolute inset-0 pointer-events-none">
-                <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-dashed border-white/60" />
-                <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-dashed border-white/60" />
-                <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white/80 bg-white/20" />
-                {logoPos.x === 0.5 && (
-                  <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-solid border-yellow-400" />
+
+            {showLogoOverlay && (
+              <>
+                {/* Alignment guides during drag */}
+                {dragging && (
+                  <div className="absolute inset-0 pointer-events-none">
+                    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-dashed border-white/60" />
+                    <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-dashed border-white/60" />
+                    {logoPos.x === 0.5 && (
+                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-solid border-amber-400" />
+                    )}
+                    {logoPos.y === 0.5 && (
+                      <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-solid border-amber-400" />
+                    )}
+                  </div>
                 )}
-                {logoPos.y === 0.5 && (
-                  <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-solid border-yellow-400" />
-                )}
-              </div>
+
+                {/* Logo overlay */}
+                <div
+                  ref={logoOverlayRef}
+                  onPointerDown={startLogoDrag}
+                  className="absolute"
+                  style={{
+                    left: `${logoPos.x * 100}%`,
+                    top: `${logoPos.y * 100}%`,
+                    width: `${logoScale * 100}%`,
+                    transform: 'translate(-50%, -50%)',
+                    cursor: dragging ? 'grabbing' : 'grab',
+                    touchAction: 'none',
+                  }}
+                >
+                  <img
+                    src={logoSrcUrl!}
+                    alt="logo"
+                    draggable={false}
+                    className="block w-full h-auto select-none"
+                    style={{ pointerEvents: 'none' }}
+                  />
+                  {/* Selection frame */}
+                  <div
+                    className="absolute pointer-events-none border-2 border-dashed"
+                    style={{ inset: -4, borderColor: '#fceb42' }}
+                  />
+                  {/* Resize handle (bottom-right) */}
+                  <div
+                    data-handle="resize"
+                    onPointerDown={startLogoResize}
+                    className="absolute rounded-full"
+                    style={{
+                      right: -10,
+                      bottom: -10,
+                      width: 20,
+                      height: 20,
+                      background: '#fceb42',
+                      border: '2px solid #111',
+                      cursor: 'nwse-resize',
+                      touchAction: 'none',
+                    }}
+                    aria-label="resize-logo"
+                  />
+                </div>
+
+                <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
+                  {dragging ? '拖动中...' : `${activeBrandLabel} · 拖动定位 · 角点缩放`}
+                </span>
+              </>
             )}
-            {withLogo && (
-              <span className="absolute top-2 left-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
-                {dragging ? '拖动中...' : `已添加 ${activeBrandLabel} · 可拖动`}
-              </span>
-            )}
+
             {compositing && (
               <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                 <span className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -408,10 +490,24 @@ export default function PreviewPanel({
           {/* 下载按钮始终显示 */}
           <button
             onClick={handleDownload}
-            className="w-full py-2 text-white text-sm font-medium rounded-lg transition-colors"
+            disabled={compositing}
+            className="w-full py-2 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
             style={{ background: '#0034cc' }}
           >
-            {withLogo ? `下载（含 ${activeBrandLabel}）` : '下载图片'}
+            {stickerEditedUrl
+              ? '下载（含素材）'
+              : showLogoOverlay
+                ? `下载（含 ${activeBrandLabel}）`
+                : '下载图片'}
+          </button>
+
+          {/* 添加素材按钮 */}
+          <button
+            onClick={openStickerEditor}
+            disabled={!resultUrl || compositing}
+            className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+          >
+            ✨ 添加素材
           </button>
         </div>
       )}
@@ -474,6 +570,23 @@ export default function PreviewPanel({
             onSelect={onSelectBackground}
           />
         </>
+      )}
+
+      {/* 素材编辑器 */}
+      {showStickerEditor && (
+        <StickerEditor
+          baseImageUrl={stickerBaseUrl || displaySrc}
+          onClose={() => setShowStickerEditor(false)}
+          onExport={(dataUrl) => {
+            setStickerEditedUrl(dataUrl)
+            setShowStickerEditor(false)
+            // Auto download
+            const a = document.createElement('a')
+            a.href = dataUrl
+            a.download = `result-with-stickers-${Date.now()}.png`
+            a.click()
+          }}
+        />
       )}
     </div>
   )
