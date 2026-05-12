@@ -87,43 +87,12 @@ Three independent LLM calls run **in parallel** via `Promise.allSettled` / `Prom
 
 ## Deployment
 
-### Server
+**详细策略和验证流程见 [`部署策略.md`](./部署策略.md)。下面只列关键事实，避免上下文重复。**
 
-- Region: Singapore (ap-southeast-1) — Gemini models have region restrictions, Hong Kong is blocked
-- IP: 47.236.90.150
-- Stack: Docker + nginx reverse proxy (port 80 → 3001)
-- Project path: `/opt/apps/i3oy507-aipp/`
-- Domains: `source.aipp.bigoffs.cn` (origin), `aipp.bigoffs.cn` (CDN)
-
-### Environment variables (on server)
-
-Stored in `/opt/apps/i3oy507-aipp/.env`, loaded via `docker run --env-file`. Never commit to repo.
-
-```
-OPENROUTER_API_KEY=<key>
-BIGOFFS_CLIENT_ID=<id>
-BIGOFFS_CLIENT_SECRET=<secret>
-```
-
-### Deploy
-
-```bash
-bash deploy.sh
-```
-
-The script packs source files (excluding `node_modules`, `.next`, `.git`, `data/`, `.env*`), uploads to server, rebuilds Docker image, and restarts the container. `data/` and `generated/` are mounted as volumes and preserved across deploys.
-
-### Prerequisites for a new deployer
-
-1. SSH public key added to `deployer@47.236.90.150:~/.ssh/authorized_keys`
-2. That's it — `deploy.sh` handles the rest
-
-### Manual operations on server
-
-```bash
-ssh deployer@47.236.90.150
-docker logs aipp                    # view logs
-docker exec aipp printenv           # check env vars
-cat /opt/apps/i3oy507-aipp/.env     # view secrets
-docker restart aipp                 # restart without rebuild
-```
+- 触发方式：`git push origin main` → GitHub Actions（`.github/workflows/deploy.yml`）→ SSH 到服务器自动 rebuild + restart。**不要**手动 `bash deploy.sh`（仅留作应急回退）。
+- 服务器：阿里云 新加坡 `47.95.109.68`，CI 账号 `deployer`，项目路径 `/opt/apps/aipp/`，容器名 `aipp`，端口 `3001`。
+- 域名：`source.aipp.bigoffs.cn`（源站）、`aipp.bigoffs.cn`（CDN），SSL 证书在 nginx 已配。
+- 运行时 env：`/opt/apps/aipp/.env`，必含 `MODELVERSE_API_KEY`、`BIGOFFS_CLIENT_ID`、`BIGOFFS_CLIENT_SECRET`。**注意**：项目已从 OpenRouter 切到 Modelverse，新代码用 `MODELVERSE_API_KEY`，但仍走 `src/lib/openrouter.ts` 这个适配器（名字保留）。
+- GitHub Secrets（仓库 `JeremyDong22/AIPP`）：`SSH_PRIVATE_KEY`、`SERVER_HOST`、`SERVER_USER`、`REMOTE_DIR`。专用 ed25519 keypair，与个人密钥隔离。
+- 持久化卷：`/opt/apps/aipp/data`（用户上传）、`/opt/apps/aipp/generated`（缓存的海报 PNG），跨部署保留，**不要删**。
+- 验证部署是否真生效的标准流程，见 [`部署策略.md`](./部署策略.md) §3 —— **不要只看 GitHub Actions 绿勾**，要在容器里 grep 构建产物。

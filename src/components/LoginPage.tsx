@@ -120,7 +120,7 @@ export default function LoginPage() {
               onMouseLeave={e => (e.currentTarget.style.boxShadow = '0 0 20px rgba(252, 234, 66, 0.3)')}
             >
               <img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />
-              使用 BigOff 账号登录
+              使用 BigOffs 账号登录
             </button>
 
             <div className="flex items-center gap-3 mb-5">
