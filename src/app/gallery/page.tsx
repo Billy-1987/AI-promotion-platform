@@ -464,18 +464,18 @@ function GalleryContent() {
         ))}
       </nav>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-3 md:px-6 py-4 md:py-8">
         {/* 顶部工具栏 */}
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800">我的图库</h2>
-            <p className="text-sm text-slate-500 mt-0.5">共 {items.length} 张图片 · 来自 AI 换装、模板社区和 AI 图片设计的下载记录</p>
+        <div className="flex items-start sm:items-center justify-between gap-3 mb-4 md:mb-6">
+          <div className="min-w-0">
+            <h2 className="text-xl md:text-2xl font-bold text-slate-800">我的图库</h2>
+            <p className="text-xs md:text-sm text-slate-500 mt-0.5">共 {items.length} 张图片 · 来自 AI 换装、模板社区和 AI 图片设计的下载记录</p>
           </div>
           {items.length > 0 && (
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-shrink-0">
               <button
                 onClick={toggleAll}
-                className="px-3 py-1.5 text-sm bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm rounded-lg transition-colors"
+                className="px-3 py-1.5 text-sm bg-white hover:bg-slate-50 text-slate-600 border border-slate-200 shadow-sm rounded-lg transition-colors whitespace-nowrap"
               >
                 {allSelected ? '取消全选' : '全选'}
               </button>
@@ -483,14 +483,14 @@ function GalleryContent() {
           )}
         </div>
 
-        {/* 批量操作栏 */}
+        {/* 批量操作栏 — mobile 横向滚动避免文字竖排 */}
         {selectedCount > 0 && (
-          <div className="flex items-center gap-3 mb-5 px-4 py-3 glass-card rounded-xl">
-            <span className="text-sm text-slate-700 font-medium">已选 {selectedCount} 张</span>
-            <div className="flex-1" />
+          <div className="flex items-center gap-2 md:gap-3 mb-4 md:mb-5 px-3 md:px-4 py-2.5 md:py-3 glass-card rounded-xl overflow-x-auto">
+            <span className="text-sm text-slate-700 font-medium whitespace-nowrap flex-shrink-0">已选 {selectedCount} 张</span>
+            <div className="flex-1 min-w-0 hidden sm:block" />
             <button
               onClick={handleBatchSave}
-              className="px-4 py-1.5 text-white text-sm font-medium rounded-lg transition-colors"
+              className="px-3 md:px-4 py-1.5 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
               style={{ background: '#0034cc' }}
             >
               一键保存
@@ -498,18 +498,18 @@ function GalleryContent() {
             <button
               onClick={() => setShowBatchLogo(true)}
               disabled={batchProcessing}
-              className="px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm disabled:opacity-40 text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+              className="px-3 md:px-4 py-1.5 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 shadow-sm disabled:opacity-40 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap flex-shrink-0"
             >
               <img src="/bigoffs-logo.png" alt="" className="h-3.5 w-auto" />
-              批量添加 Logo
+              <span className="hidden sm:inline">批量</span>添加 Logo
             </button>
             <button
               onClick={handleBatchDelete}
-              className="px-4 py-1.5 bg-red-700 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors"
+              className="px-3 md:px-4 py-1.5 bg-red-700 hover:bg-red-600 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
             >
               删除
             </button>
-            <button onClick={clearSelection} className="text-slate-500 hover:text-slate-700 text-sm px-2">取消</button>
+            <button onClick={clearSelection} className="text-slate-500 hover:text-slate-700 text-sm px-2 whitespace-nowrap flex-shrink-0">取消</button>
           </div>
         )}
 

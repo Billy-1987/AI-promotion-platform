@@ -220,8 +220,8 @@ export default function ImageDesignStudio() {
     const log = makeLogger('image-design-upload')
     log.info('start — name:', file.name, 'type:', file.type, 'size:', formatBytes(file.size), 'currentRefCount:', refImages.length)
 
-    if (refImages.length >= 4) {
-      log.warn('refImages already at limit (4), skipping')
+    if (refImages.length >= 10) {
+      log.warn('refImages already at limit (10), skipping')
       return
     }
 
@@ -722,7 +722,7 @@ export default function ImageDesignStudio() {
           {/* Reference image upload */}
           <div className="glass-card rounded-2xl p-4">
             <label className="block text-sm font-medium text-slate-700 mb-2">
-              参考图（可选，最多4张）
+              参考图（可选，最多10张）
             </label>
             {refImages.length > 0 && (
               <div className="grid grid-cols-2 gap-2 mb-2">
@@ -743,7 +743,7 @@ export default function ImageDesignStudio() {
                 ))}
               </div>
             )}
-            {refImages.length < 4 && (
+            {refImages.length < 10 && (
               <div
                 onDrop={handleRefDrop}
                 onDragOver={e => { e.preventDefault(); setRefDragOver(true) }}
@@ -755,7 +755,7 @@ export default function ImageDesignStudio() {
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
                 </svg>
                 <p className="text-xs text-slate-400">
-                  {refImages.length === 0 ? '拖拽或点击上传参考图' : `再添加一张（${refImages.length}/4）`}
+                  {refImages.length === 0 ? '拖拽或点击上传参考图' : `再添加一张（${refImages.length}/10）`}
                 </p>
               </div>
             )}
