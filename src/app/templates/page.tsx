@@ -6,6 +6,7 @@ import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import { APP_VERSION } from '@/lib/version'
+import { downloadDataUrl } from '@/lib/download'
 
 type Category = '全部' | '节日' | '节气' | '促销' | '通用'
 
@@ -276,13 +277,14 @@ function PreviewModal({
 
   const [withLogo, setWithLogo] = useState(false)
   const [compositing, setCompositing] = useState(false)
-  const [compositedUrl, setCompositedUrl] = useState<string | null>(null)
-  const [logoPos, setLogoPos] = useState({ x: 0.5, y: 0.92 })
+  const [logoPos, setLogoPos] = useState({ x: 0.85, y: 0.10 })
+  const [logoScale, setLogoScale] = useState(0.22)
   const [dragging, setDragging] = useState(false)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewRef = useRef<HTMLDivElement>(null)
   const posterImgRef = useRef<HTMLImageElement | null>(null)
   const logoImgRef = useRef<HTMLImageElement | null>(null)
+  const logoOverlayRef = useRef<HTMLDivElement>(null)
 
   // Auto-save to gallery when image becomes available
   useEffect(() => {
@@ -302,10 +304,10 @@ function PreviewModal({
     setActiveVariant(v)
     setSloganIndex(0)
     setWithLogo(false)
-    setCompositedUrl(null)
     posterImgRef.current = null
     logoImgRef.current = null
-    setLogoPos({ x: 0.5, y: 0.92 })
+    setLogoPos({ x: 0.85, y: 0.10 })
+    setLogoScale(0.22)
   }
 
   function loadImage(src: string): Promise<HTMLImageElement> {
@@ -326,126 +328,139 @@ function PreviewModal({
     })
   }
 
-  function redrawCanvas() {
-    if (!posterImgRef.current || !logoImgRef.current) return
+  async function bakeWithLogo(baseUrl: string): Promise<string> {
+    const [poster, logo] = await Promise.all([loadImage(baseUrl), loadImage('/bigoffs-logo.png')])
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
-    const poster = posterImgRef.current
-    const logo = logoImgRef.current
-
     canvas.width = poster.naturalWidth
     canvas.height = poster.naturalHeight
     ctx.drawImage(poster, 0, 0)
-
-    const logoW = poster.naturalWidth * 0.22
+    const logoW = poster.naturalWidth * logoScale
     const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
     const logoX = poster.naturalWidth * logoPos.x - logoW / 2
     const logoY = poster.naturalHeight * logoPos.y - logoH / 2
-
     ctx.drawImage(logo, logoX, logoY, logoW, logoH)
-    setCompositedUrl(canvas.toDataURL('image/jpeg', 0.92))
+    return canvas.toDataURL('image/jpeg', 0.92)
   }
 
   async function handleAddLogo() {
     if (!imageUrl) return
     setCompositing(true)
     try {
-      const [poster, logo] = await Promise.all([
-        loadImage(imageUrl),
-        loadImage('/bigoffs-logo.png'),
-      ])
-      posterImgRef.current = poster
+      const logo = await loadImage('/bigoffs-logo.png')
       logoImgRef.current = logo
       setWithLogo(true)
-      redrawCanvas()
     } catch (e) {
-      console.error('Logo compositing failed', e)
+      console.error('Logo load failed', e)
     } finally {
       setCompositing(false)
     }
   }
 
   function handleRemoveLogo() {
-    setCompositedUrl(null)
     setWithLogo(false)
     posterImgRef.current = null
     logoImgRef.current = null
+    setLogoScale(0.22)
+    setLogoPos({ x: 0.85, y: 0.10 })
   }
 
-  function handleMouseDown(e: React.MouseEvent<HTMLDivElement>) {
-    if (!withLogo) return
-    setDragging(true)
-    updateLogoPos(e.clientX, e.clientY)
-  }
-
-  function handleMouseMove(e: React.MouseEvent<HTMLDivElement>) {
-    if (!dragging) return
-    updateLogoPos(e.clientX, e.clientY)
-  }
-
-  function handleMouseUp() {
-    setDragging(false)
-  }
-
-  function handleTouchStart(e: React.TouchEvent<HTMLDivElement>) {
-    if (!withLogo || e.touches.length !== 1) return
-    setDragging(true)
-    const touch = e.touches[0]
-    updateLogoPos(touch.clientX, touch.clientY)
-  }
-
-  function handleTouchMove(e: React.TouchEvent<HTMLDivElement>) {
-    if (!dragging || e.touches.length !== 1) return
+  // ── Drag / Resize handlers for logo overlay ──────────────────────
+  function startLogoDrag(e: React.PointerEvent) {
+    if ((e.target as HTMLElement).dataset.handle) return
     e.preventDefault()
-    const touch = e.touches[0]
-    updateLogoPos(touch.clientX, touch.clientY)
-  }
+    e.stopPropagation()
+    const overlay = logoOverlayRef.current?.parentElement
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = logoPos.x * rect.width
+    const origY = logoPos.y * rect.height
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+    setDragging(true)
 
-  function handleTouchEnd() {
-    setDragging(false)
-  }
-
-  function updateLogoPos(clientX: number, clientY: number) {
-    const preview = previewRef.current
-    if (!preview) return
-    const rect = preview.getBoundingClientRect()
-    let x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    let y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-    // 吸附：距中心 3% 以内自动对齐
-    if (Math.abs(x - 0.5) < 0.03) x = 0.5
-    if (Math.abs(y - 0.5) < 0.03) y = 0.5
-    setLogoPos({ x, y })
-  }
-
-  // 位置改变时重绘
-  useEffect(() => {
-    if (withLogo && posterImgRef.current && logoImgRef.current) {
-      redrawCanvas()
+    const onMove = (ev: PointerEvent) => {
+      let nx = Math.max(0.02, Math.min(0.98, (origX + ev.clientX - startX) / rect.width))
+      let ny = Math.max(0.02, Math.min(0.98, (origY + ev.clientY - startY) / rect.height))
+      if (Math.abs(nx - 0.5) < 0.015) nx = 0.5
+      if (Math.abs(ny - 0.5) < 0.015) ny = 0.5
+      setLogoPos({ x: nx, y: ny })
     }
-  }, [logoPos, withLogo])
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+      setDragging(false)
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }
+
+  function startLogoResize(e: React.PointerEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = logoOverlayRef.current?.parentElement
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const cx = logoPos.x * rect.width
+    const cy = logoPos.y * rect.height
+    const startDist = Math.hypot(e.clientX - rect.left - cx, e.clientY - rect.top - cy) || 1
+    const baseScale = logoScale
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+
+    const onMove = (ev: PointerEvent) => {
+      const d = Math.hypot(ev.clientX - rect.left - cx, ev.clientY - rect.top - cy)
+      const k = d / startDist
+      setLogoScale(Math.max(0.05, Math.min(0.6, +(baseScale * k).toFixed(4))))
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }
 
   async function handleDownload() {
     if (!imageUrl) return
-    const isLogoVersion = withLogo && compositedUrl
-    const src = isLogoVersion ? compositedUrl! : imageUrl
-    const filename = isLogoVersion ? `${item.title}-BIGOFFS.jpg` : `${item.title}.png`
+    let src: string
+    let filename: string
+    if (withLogo) {
+      setCompositing(true)
+      try {
+        src = await bakeWithLogo(imageUrl)
+      } finally {
+        setCompositing(false)
+      }
+      filename = `${item.title}-BIGOFFS.jpg`
+    } else {
+      src = imageUrl
+      filename = `${item.title}.png`
+    }
 
-    // 触发浏览器下载
-    const a = document.createElement('a')
-    a.href = src
-    a.download = filename
-    a.click()
+    // 触发浏览器下载（mobile-safe: Web Share API → Blob URL）
+    const dataUrl = src.startsWith('data:') ? src : await urlToDataUrl(src)
+    await downloadDataUrl(dataUrl, filename)
 
     // 同步存入图库
     try {
-      const dataUrl = await urlToDataUrl(src)
       await saveToGallery({ dataUrl, filename, source: 'template' }, username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
   }
 
-  const displaySrc = withLogo && compositedUrl ? compositedUrl : imageUrl
+  const displaySrc = imageUrl
 
   return (
     <div
@@ -459,20 +474,27 @@ function PreviewModal({
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 shrink-0">
-          <div className="flex items-center gap-3">
-            <span className={`text-xs px-2 py-0.5 rounded text-white font-medium ${CATEGORY_COLORS[item.category]}`}>
+        <div className="px-3 md:px-6 py-3 md:py-4 border-b border-slate-200 shrink-0">
+          {/* Top row: badge + title + (date) + close */}
+          <div className="flex items-center gap-2 md:gap-3 min-w-0">
+            <span className={`text-xs px-2 py-0.5 rounded text-white font-medium whitespace-nowrap flex-shrink-0 ${CATEGORY_COLORS[item.category]}`}>
               {item.category}
             </span>
-            <h3 className="text-lg font-bold text-slate-800">{item.title}</h3>
-            {item.date && <span className="text-sm text-slate-500">{item.date}</span>}
+            <h3 className="text-base md:text-lg font-bold text-slate-800 truncate min-w-0 flex-1">{item.title}</h3>
+            {item.date && <span className="hidden sm:inline text-sm text-slate-500 whitespace-nowrap flex-shrink-0">{item.date}</span>}
+            <button
+              onClick={onClose}
+              className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100 flex-shrink-0"
+            >
+              ×
+            </button>
           </div>
-          <div className="flex items-center gap-3">
-            {/* Variant switcher — always show, show spinner while v1 loading */}
-            <div className="flex rounded-lg border border-slate-200 overflow-hidden">
+          {/* Action row: variant switcher + 换金句 + 换一张 (wraps / scrolls horizontally on narrow screens) */}
+          <div className="flex items-center gap-2 md:gap-3 mt-2 md:mt-3 overflow-x-auto whitespace-nowrap">
+            <div className="flex rounded-lg border border-slate-200 overflow-hidden flex-shrink-0">
               <button
                 onClick={() => switchVariant(0)}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors ${activeVariant === 0 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
+                className={`px-2.5 md:px-3 py-1.5 text-xs font-medium transition-colors whitespace-nowrap ${activeVariant === 0 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50'}`}
                 style={activeVariant === 0 ? { background: '#0034cc' } : {}}
               >
                 款式一
@@ -480,17 +502,16 @@ function PreviewModal({
               <button
                 onClick={() => { if (imageUrls[1]) switchVariant(1) }}
                 disabled={!imageUrls[1]}
-                className={`px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 ${activeVariant === 1 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'}`}
+                className={`px-2.5 md:px-3 py-1.5 text-xs font-medium transition-colors flex items-center gap-1 whitespace-nowrap ${activeVariant === 1 ? 'text-white' : 'bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50'}`}
                 style={activeVariant === 1 ? { background: '#0034cc' } : {}}
               >
                 {loadingV1 && <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />}
                 款式二
               </button>
             </div>
-            {/* 换金句 */}
             <button
               onClick={handleSwapSlogan}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 transition-colors flex-shrink-0 whitespace-nowrap"
               title="切换另一条金句"
             >
               <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
@@ -498,11 +519,10 @@ function PreviewModal({
               </svg>
               换金句
             </button>
-            {/* 换一张 */}
             <button
               onClick={handleRegenerate}
               disabled={regenerating}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+              className="flex items-center gap-1.5 px-2.5 md:px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-50 transition-colors flex-shrink-0 whitespace-nowrap"
             >
               {regenerating
                 ? <span className="w-3 h-3 border border-slate-400 border-t-transparent rounded-full animate-spin" />
@@ -512,12 +532,6 @@ function PreviewModal({
               }
               换一张
             </button>
-            <button
-              onClick={onClose}
-              className="text-slate-400 hover:text-slate-700 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-lg hover:bg-slate-100"
-            >
-              ×
-            </button>
           </div>
         </div>
 
@@ -525,45 +539,89 @@ function PreviewModal({
         <div className="flex-1 overflow-auto p-6 flex items-center justify-center bg-slate-50">
           {displaySrc ? (
             <div className="relative">
-              <div
-                ref={previewRef}
-                className={`relative ${withLogo ? 'cursor-move' : ''}`}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
-              >
+              <div ref={previewRef} className="relative inline-block">
                 <img
                   src={displaySrc}
                   alt={item.title}
-                  className="max-h-[52vh] w-auto rounded-lg shadow-2xl object-contain select-none"
+                  className="block max-h-[52vh] w-auto rounded-lg shadow-2xl object-contain select-none"
                   draggable={false}
                 />
-                {/* 拖动时显示居中辅助线 */}
-                {dragging && (
-                  <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
-                    {/* 垂直中线 */}
-                    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px w-px border-l-2 border-dashed border-white/60" />
-                    {/* 水平中线 */}
-                    <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px border-t-2 border-dashed border-white/60" />
-                    {/* 中心交叉点 */}
-                    <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white/80 bg-white/20" />
-                    {/* 吸附时高亮提示 */}
-                    {logoPos.x === 0.5 && (
-                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px w-px border-l-2 border-solid border-yellow-400/90" />
+                {withLogo && (
+                  <>
+                    {/* 拖动时显示居中辅助线 */}
+                    {dragging && (
+                      <div className="absolute inset-0 pointer-events-none rounded-lg overflow-hidden">
+                        <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px w-px border-l-2 border-dashed border-white/60" />
+                        <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px border-t-2 border-dashed border-white/60" />
+                        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white/80 bg-white/20" />
+                        {logoPos.x === 0.5 && (
+                          <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px w-px border-l-2 border-solid border-yellow-400/90" />
+                        )}
+                        {logoPos.y === 0.5 && (
+                          <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px border-t-2 border-solid border-yellow-400/90" />
+                        )}
+                      </div>
                     )}
-                    {logoPos.y === 0.5 && (
-                      <div className="absolute left-0 right-0 top-1/2 -translate-y-px h-px border-t-2 border-solid border-yellow-400/90" />
-                    )}
-                  </div>
+                    {/* Logo overlay — drag body to move, drag ↘ handle to resize */}
+                    <div
+                      ref={logoOverlayRef}
+                      onPointerDown={startLogoDrag}
+                      className="absolute"
+                      style={{
+                        left: `${logoPos.x * 100}%`,
+                        top: `${logoPos.y * 100}%`,
+                        width: `${logoScale * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        cursor: dragging ? 'grabbing' : 'grab',
+                        touchAction: 'none',
+                      }}
+                    >
+                      <img
+                        src="/bigoffs-logo.png"
+                        alt="logo"
+                        draggable={false}
+                        className="block w-full h-auto select-none"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                      {/* Selection frame */}
+                      <div
+                        className="absolute pointer-events-none border-2 border-dashed"
+                        style={{ inset: -4, borderColor: '#fceb42' }}
+                      />
+                      {/* Resize handle (bottom-right) */}
+                      <div
+                        data-handle="resize"
+                        onPointerDown={startLogoResize}
+                        className="absolute rounded-full flex items-center justify-center"
+                        style={{
+                          right: -14, bottom: -14, width: 28, height: 28,
+                          background: '#fceb42', border: '2px solid #111',
+                          cursor: 'nwse-resize', touchAction: 'none',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                          fontSize: 14, lineHeight: 1, color: '#111', fontWeight: 700,
+                        }}
+                        title="拖动缩放 Logo"
+                      >↘</div>
+                      {/* Decorative corner ticks */}
+                      {(['nw', 'ne', 'sw'] as const).map(corner => (
+                        <div
+                          key={corner}
+                          className="absolute pointer-events-none rounded-full"
+                          style={{
+                            width: 10, height: 10,
+                            background: '#fceb42', border: '2px solid #111',
+                            ...(corner.includes('n') ? { top: -5 } : { bottom: -5 }),
+                            ...(corner.includes('w') ? { left: -5 } : { right: -5 }),
+                          }}
+                        />
+                      ))}
+                    </div>
+                  </>
                 )}
               </div>
               {withLogo && (
-                <span className="absolute top-2 right-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium">
-                  {dragging ? '拖动中...' : '已添加 Logo · 可拖动'}
+                <span className="absolute top-2 right-2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
+                  {dragging ? '拖动中...' : '拖动定位 · 拖黄色角缩放'}
                 </span>
               )}
               {compositing && (
@@ -600,7 +658,7 @@ function PreviewModal({
             >
               {compositing
                 ? <><span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />处理中...</>
-                : <><img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />一键添加 Logo</>
+                : <><img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />添加 Logo</>
               }
             </button>
           ) : (
@@ -655,32 +713,32 @@ function TemplatesContent() {
 
   return (
     <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
-      <header className="bigoffs-header px-6 flex items-center justify-between overflow-hidden" style={{ height: 60 }}>
-        <div className="flex items-center gap-3">
+      <header className="bigoffs-header px-3 md:px-6 flex items-center justify-between overflow-hidden flex-shrink-0" style={{ height: 60 }}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <Logo />
-          <div>
-            <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-slate-400">模板社区</p>
+          <div className="min-w-0">
+            <h1 className="text-base md:text-lg font-bold text-white truncate">智能推广平台</h1>
+            <p className="text-xs text-slate-400 truncate">模板社区</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           {user && (
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <div className="text-right max-w-[120px] min-w-0">
+            <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+              <div className="text-right hidden sm:block min-w-0">
                 <p className="text-sm text-white font-medium truncate">{user.name}</p>
                 <p className="text-xs text-slate-400 truncate">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
               </div>
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
                 {user.name[0]}
               </div>
-              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0">退出</button>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0 whitespace-nowrap">退出</button>
             </div>
           )}
-          <span className="text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
+          <span className="hidden md:inline text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
         </div>
       </header>
 
-      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅' },
           { label: '模板社区', href: '/templates', icon: '🎨', active: true },

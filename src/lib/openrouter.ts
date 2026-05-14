@@ -70,14 +70,19 @@ async function modelverseCreate(params: Record<string, unknown>) {
   const model = MODEL_MAP[params.model as string] ?? (params.model as string).replace(/^google\//, '')
   const messages = params.messages as Array<{ role: string; content: string | OAIPart[] }>
   const modalities = params.modalities as string[] | undefined
-  const imageConfig = params.image_config as { aspect_ratio?: string } | undefined
+  const imageConfig = params.image_config as { aspect_ratio?: string; image_size?: string } | undefined
 
   const generationConfig: Record<string, unknown> = {}
-  if (modalities?.some(m => m === 'image' || m === 'IMAGE')) {
+  const wantsImage = modalities?.some(m => m === 'image' || m === 'IMAGE')
+  if (wantsImage) {
     generationConfig.responseModalities = ['TEXT', 'IMAGE']
-  }
-  if (imageConfig?.aspect_ratio) {
-    generationConfig.aspectRatio = imageConfig.aspect_ratio
+    // Gemini expects nested generationConfig.imageConfig.{aspectRatio,imageSize};
+    // a flat aspectRatio field is silently ignored and the model defaults to ~1:1.
+    // Default imageSize to '2K' (≈1080p) — HD quality, ~2× cost of 1K, well below 4K's bandwidth/time hit.
+    generationConfig.imageConfig = {
+      imageSize: imageConfig?.image_size ?? '2K',
+      ...(imageConfig?.aspect_ratio && { aspectRatio: imageConfig.aspect_ratio }),
+    }
   }
 
   const res = await fetch(`${MODELVERSE_BASE}/v1beta/models/${model}:generateContent`, {

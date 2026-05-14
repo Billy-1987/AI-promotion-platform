@@ -232,17 +232,11 @@ export async function POST(req: NextRequest) {
 
   log.info('image prompt (first 120):', imagePrompt.slice(0, 120))
 
-  // ── Generate image: race two models, take first non-null result ─────────
-  const generatedImageUrl = await Promise.any([
-    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-2.5-flash-image-preview', aspectRatio)
-      .then(url => { if (!url) throw new Error('no image from gemini-2.5-flash-image'); return url }),
-    generateFromImageRef(clothingBase64, mime, imagePrompt, 'google/gemini-3.1-flash-image-preview', aspectRatio)
-      .then(url => { if (!url) throw new Error('no image from gemini-3.1-flash-image-preview'); return url }),
-  ]).catch(e => {
-    const detail = e instanceof AggregateError
-      ? e.errors.map((err: Error) => err?.message).join(' | ')
-      : (e as Error)?.message
-    log.error('image gen failed:', detail, '\n', (e as Error)?.stack)
+  // ── Generate image: gemini-2.5-flash-image only (faster, ~half the cost) ────
+  const generatedImageUrl = await generateFromImageRef(
+    clothingBase64, mime, imagePrompt, 'google/gemini-2.5-flash-image-preview', aspectRatio,
+  ).catch(e => {
+    log.error('image gen failed:', (e as Error)?.message, '\n', (e as Error)?.stack)
     return null
   })
 

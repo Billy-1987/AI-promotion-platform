@@ -6049,5 +6049,8 @@
       "remark": "陈列主推款",
       "imageUrl": "/api/calendar/image?file=image413.png"
     }
-  ]
+  ],
+  "weekNotes": {
+    "26W20": "阿迪达斯不要写成达斯阿迪"
+  }
 }

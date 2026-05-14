@@ -6,6 +6,8 @@ import Logo from './Logo'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
 import { APP_VERSION } from '@/lib/version'
+import { OTHER_BRANDS, getBrandLogoUrl, getBrandLabel } from '@/lib/brands'
+import { downloadDataUrl } from '@/lib/download'
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实' },
@@ -176,15 +178,25 @@ export default function ImageDesignStudio() {
   const [history, setHistory] = useState<HistoryItem[]>([])
   useEffect(() => { setHistory(loadHistory()) }, [])
 
-  // Logo compositing state
-  const [withLogo, setWithLogo] = useState(false)
+  // Logo state — two independent slots: BigOffs (top-right) + partner brand (top-left)
+  type LogoData = { srcUrl: string; pos: { x: number; y: number }; scale: number; aspect: number }
+  type LogoSlot = 'bigoffs' | 'partner'
+  const [bigoffsLogo, setBigoffsLogo] = useState<LogoData | null>(null)
+  const [partnerLogo, setPartnerLogo] = useState<LogoData | null>(null)
+  const [dragging, setDragging] = useState<LogoSlot | null>(null)
   const [compositing, setCompositing] = useState(false)
-  const [logoPos, setLogoPos] = useState({ x: 0.5, y: 0.88 })
-  const [dragging, setDragging] = useState(false)
+  const [selectedBrand, setSelectedBrand] = useState('none')
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const previewAreaRef = useRef<HTMLDivElement>(null)
   const posterImgRef = useRef<HTMLImageElement | null>(null)
-  const logoImgRef = useRef<HTMLImageElement | null>(null)
+
+  function getLogo(slot: LogoSlot): LogoData | null {
+    return slot === 'bigoffs' ? bigoffsLogo : partnerLogo
+  }
+  function patchLogo(slot: LogoSlot, patch: Partial<LogoData>) {
+    const setter = slot === 'bigoffs' ? setBigoffsLogo : setPartnerLogo
+    setter(prev => (prev ? { ...prev, ...patch } : prev))
+  }
 
   // Text overlay state
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
@@ -415,10 +427,10 @@ export default function ImageDesignStudio() {
 
   // Reset compositing state when selected image changes
   useEffect(() => {
-    setWithLogo(false)
+    setBigoffsLogo(null)
+    setPartnerLogo(null)
+    setSelectedBrand('none')
     posterImgRef.current = null
-    logoImgRef.current = null
-    setLogoPos({ x: 0.5, y: 0.88 })
   }, [selectedImage])
 
   function loadImg(src: string): Promise<HTMLImageElement> {
@@ -451,25 +463,34 @@ export default function ImageDesignStudio() {
     })
   }
 
-  async function handleAddLogo() {
+  async function loadIntoSlot(slot: LogoSlot, url: string, defaultPos: { x: number; y: number }, brandValue?: string) {
     if (!selectedImage) return
     setCompositing(true)
     try {
-      const poster = await loadImg(selectedImage)
-      const logo = await loadImg('/bigoffs-logo.png')
-      posterImgRef.current = poster
-      logoImgRef.current = logo
-      setWithLogo(true)
+      const img = await loadImg(url)
+      const data: LogoData = {
+        srcUrl: url,
+        pos: defaultPos,
+        scale: 0.22,
+        aspect: img.naturalHeight / img.naturalWidth,
+      }
+      if (slot === 'bigoffs') setBigoffsLogo(data)
+      else setPartnerLogo(data)
+      if (brandValue) setSelectedBrand(brandValue)
     } catch (e) {
-      console.error('Logo compositing failed', e)
+      console.error('Logo load failed', e)
     } finally {
       setCompositing(false)
     }
   }
 
-  function handleRemoveLogo() {
-    setWithLogo(false)
-    logoImgRef.current = null
+  async function handleAddLogo() {
+    await loadIntoSlot('bigoffs', '/bigoffs-logo.png', { x: 0.85, y: 0.10 })
+  }
+
+  function handleRemoveSlot(slot: LogoSlot) {
+    if (slot === 'bigoffs') setBigoffsLogo(null)
+    else { setPartnerLogo(null); setSelectedBrand('none') }
   }
 
   async function handleApplyText() {
@@ -488,16 +509,76 @@ export default function ImageDesignStudio() {
     setTextOverlays(newTexts)
   }
 
-  // ── Logo drag ──────────────────────────────────────────────────
-  function updateLogoPos(clientX: number, clientY: number) {
-    const el = previewAreaRef.current
-    if (!el) return
-    const r = el.getBoundingClientRect()
-    let x = Math.max(0, Math.min(1, (clientX - r.left) / r.width))
-    let y = Math.max(0, Math.min(1, (clientY - r.top)  / r.height))
-    if (Math.abs(x - 0.5) < 0.03) x = 0.5
-    if (Math.abs(y - 0.5) < 0.03) y = 0.5
-    setLogoPos({ x, y })
+  // ── Logo drag / resize (DOM overlay style, same as try-on) ─────
+  const wasDraggingRef = useRef(false)
+
+  function startLogoDrag(e: React.PointerEvent, slot: LogoSlot) {
+    if ((e.target as HTMLElement).dataset.handle) return
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = previewAreaRef.current
+    const logo = getLogo(slot)
+    if (!overlay || !logo) return
+    const rect = overlay.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = logo.pos.x * rect.width
+    const origY = logo.pos.y * rect.height
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+    setDragging(slot)
+    wasDraggingRef.current = false
+
+    const onMove = (ev: PointerEvent) => {
+      let nx = Math.max(0.02, Math.min(0.98, (origX + ev.clientX - startX) / rect.width))
+      let ny = Math.max(0.02, Math.min(0.98, (origY + ev.clientY - startY) / rect.height))
+      if (Math.abs(nx - 0.5) < 0.015) nx = 0.5
+      if (Math.abs(ny - 0.5) < 0.015) ny = 0.5
+      patchLogo(slot, { pos: { x: nx, y: ny } })
+      wasDraggingRef.current = true
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+      setDragging(null)
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }
+
+  function startLogoResize(e: React.PointerEvent, slot: LogoSlot) {
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = previewAreaRef.current
+    const logo = getLogo(slot)
+    if (!overlay || !logo) return
+    const rect = overlay.getBoundingClientRect()
+    const cx = logo.pos.x * rect.width
+    const cy = logo.pos.y * rect.height
+    const startDist = Math.hypot(e.clientX - rect.left - cx, e.clientY - rect.top - cy) || 1
+    const baseScale = logo.scale
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+
+    const onMove = (ev: PointerEvent) => {
+      const d = Math.hypot(ev.clientX - rect.left - cx, ev.clientY - rect.top - cy)
+      const k = d / startDist
+      patchLogo(slot, { scale: Math.max(0.05, Math.min(0.6, +(baseScale * k).toFixed(4))) })
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
   }
 
   // ── Text drag — global listeners so pointer can leave the element ──
@@ -545,28 +626,6 @@ export default function ImageDesignStudio() {
     window.addEventListener('touchend', onUp)
   }
 
-  // ── Preview area handlers (Logo only — text has its own listeners) ──
-  function handleMouseDown(e: React.MouseEvent) {
-    if (draggingTextRef.current) return
-    if (withLogo) { setDragging(true); updateLogoPos(e.clientX, e.clientY) }
-  }
-  function handleMouseMove(e: React.MouseEvent) {
-    if (dragging) updateLogoPos(e.clientX, e.clientY)
-  }
-  const wasDraggingRef = useRef(false)
-  function handleMouseUp() { wasDraggingRef.current = dragging; setDragging(false) }
-
-  function handleTouchStart(e: React.TouchEvent) {
-    if (draggingTextRef.current || !withLogo || e.touches.length !== 1) return
-    setDragging(true)
-    updateLogoPos(e.touches[0].clientX, e.touches[0].clientY)
-  }
-  function handleTouchMove(e: React.TouchEvent) {
-    if (!dragging || e.touches.length !== 1) return
-    e.preventDefault()
-    updateLogoPos(e.touches[0].clientX, e.touches[0].clientY)
-  }
-  function handleTouchEnd() { wasDraggingRef.current = dragging; setDragging(false) }
 
   async function handleDownload() {
     if (!selectedImage) return
@@ -579,19 +638,16 @@ export default function ImageDesignStudio() {
     canvas.height = poster.naturalHeight
     ctx.drawImage(poster, 0, 0)
     if (textOverlays.length > 0) drawTexts(ctx, canvas.width, canvas.height, textOverlays)
-    if (withLogo && logoImgRef.current) {
-      const logo = logoImgRef.current
-      const logoW = poster.naturalWidth * 0.22
-      const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
-      ctx.drawImage(logo, poster.naturalWidth * logoPos.x - logoW / 2, poster.naturalHeight * logoPos.y - logoH / 2, logoW, logoH)
+    for (const slot of ['bigoffs', 'partner'] as const) {
+      const logo = getLogo(slot)
+      if (!logo) continue
+      const logoImg = await loadImg(logo.srcUrl)
+      const logoW = poster.naturalWidth * logo.scale
+      const logoH = (logoImg.naturalHeight / logoImg.naturalWidth) * logoW
+      ctx.drawImage(logoImg, poster.naturalWidth * logo.pos.x - logoW / 2, poster.naturalHeight * logo.pos.y - logoH / 2, logoW, logoH)
     }
     const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    document.body.removeChild(a)
+    await downloadDataUrl(dataUrl, filename)
     try {
       await saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
     } catch (e) {
@@ -860,21 +916,16 @@ export default function ImageDesignStudio() {
                   const selectedImg = images.find(img => img.url === selectedImage)
                   const imgRatio = selectedImg?.ratio ?? ratio
                   const r = RATIO_OPTIONS.find(r => r.value === imgRatio)
-                  const isPortrait = r && r.h > r.w
+                  // Always size by width with aspect-ratio computing height; cap with maxHeight to fit parent
+                  // (Previous `height: 100%` for portrait failed on mobile when parent had no definite height.)
                   return {
                     aspectRatio: r ? `${r.w}/${r.h}` : '1/1',
-                    ...(isPortrait ? { height: '100%', maxHeight: '100%' } : { width: '100%', maxWidth: '100%' }),
-                    cursor: withLogo && !draggingTextRef.current ? 'move' : 'default',
-                    containerType: 'inline-size',
+                    width: '100%',
+                    maxWidth: '100%',
+                    maxHeight: '100%',
+                    containerType: 'inline-size' as const,
                   }
                 })()}
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-                onTouchStart={handleTouchStart}
-                onTouchMove={handleTouchMove}
-                onTouchEnd={handleTouchEnd}
                 onClick={() => { setSelectedTextIdx(null); setInlineEditIdx(null) }}
               >
                 {/* 点击图片本体进入详情 */}
@@ -990,35 +1041,94 @@ export default function ImageDesignStudio() {
                   })
                 })()}
 
-                {/* Logo HTML overlay */}
-                {withLogo && (
-                  <img
-                    src="/bigoffs-logo.png"
-                    alt="Logo"
-                    className="absolute pointer-events-none"
-                    style={{
-                      left: `${logoPos.x * 100}%`,
-                      top: `${logoPos.y * 100}%`,
-                      transform: 'translate(-50%, -50%)',
-                      width: '22%',
-                      height: 'auto',
-                    }}
-                  />
-                )}
-
                 {/* Logo 拖动辅助线 */}
-                {dragging && (
-                  <div className="absolute inset-0 pointer-events-none">
-                    <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l border-dashed border-white/40" />
-                    <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t border-dashed border-white/40" />
-                    {logoPos.x === 0.5 && <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-yellow-400" />}
-                    {logoPos.y === 0.5 && <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-yellow-400" />}
-                  </div>
-                )}
+                {dragging && (() => {
+                  const logo = getLogo(dragging)
+                  if (!logo) return null
+                  return (
+                    <div className="absolute inset-0 pointer-events-none">
+                      <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l border-dashed border-white/40" />
+                      <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t border-dashed border-white/40" />
+                      {logo.pos.x === 0.5 && <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-yellow-400" />}
+                      {logo.pos.y === 0.5 && <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-yellow-400" />}
+                    </div>
+                  )
+                })()}
 
-                {withLogo && (
-                  <span className="absolute top-3 right-3 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
-                    {dragging ? '拖动中...' : '已添加 Logo · 可拖动'}
+                {/* Logo overlays — render one per active slot (bigoffs / partner) */}
+                {(['bigoffs', 'partner'] as const).map(slot => {
+                  const logo = getLogo(slot)
+                  if (!logo) return null
+                  return (
+                    <div
+                      key={slot}
+                      onPointerDown={e => startLogoDrag(e, slot)}
+                      className="absolute"
+                      style={{
+                        left: `${logo.pos.x * 100}%`,
+                        top: `${logo.pos.y * 100}%`,
+                        width: `${logo.scale * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        cursor: dragging === slot ? 'grabbing' : 'grab',
+                        touchAction: 'none',
+                      }}
+                    >
+                      <img
+                        src={logo.srcUrl}
+                        alt="logo"
+                        draggable={false}
+                        className="block w-full h-auto select-none"
+                        style={{ pointerEvents: 'none' }}
+                      />
+                      <div
+                        className="absolute pointer-events-none border-2 border-dashed"
+                        style={{ inset: -4, borderColor: '#fceb42' }}
+                      />
+                      <button
+                        data-handle="remove"
+                        onPointerDown={e => e.stopPropagation()}
+                        onClick={e => { e.stopPropagation(); handleRemoveSlot(slot) }}
+                        className="absolute rounded-full flex items-center justify-center"
+                        style={{
+                          right: -14, top: -14, width: 22, height: 22,
+                          background: '#ef4444', border: '2px solid #fff',
+                          color: '#fff', fontSize: 12, lineHeight: 1, fontWeight: 700,
+                          cursor: 'pointer', boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                        }}
+                        title="移除此 Logo"
+                      >✕</button>
+                      <div
+                        data-handle="resize"
+                        onPointerDown={e => startLogoResize(e, slot)}
+                        className="absolute rounded-full flex items-center justify-center"
+                        style={{
+                          right: -14, bottom: -14, width: 28, height: 28,
+                          background: '#fceb42', border: '2px solid #111',
+                          cursor: 'nwse-resize', touchAction: 'none',
+                          boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                          fontSize: 14, lineHeight: 1, color: '#111', fontWeight: 700,
+                        }}
+                        title="拖动缩放 Logo"
+                      >↘</div>
+                      {(['nw', 'sw'] as const).map(corner => (
+                        <div
+                          key={corner}
+                          className="absolute pointer-events-none rounded-full"
+                          style={{
+                            width: 10, height: 10,
+                            background: '#fceb42', border: '2px solid #111',
+                            ...(corner.includes('n') ? { top: -5 } : { bottom: -5 }),
+                            ...(corner.includes('w') ? { left: -5 } : { right: -5 }),
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )
+                })}
+
+                {(bigoffsLogo || partnerLogo) && (
+                  <span className="absolute top-3 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
+                    {dragging ? '拖动中...' : '拖动定位 · 拖黄色角缩放 · 点 ✕ 移除'}
                   </span>
                 )}
                 {compositing && (
@@ -1063,19 +1173,27 @@ export default function ImageDesignStudio() {
               </button>
 
               <div className="flex gap-2">
-                {!withLogo ? (
-                  <button onClick={handleAddLogo} disabled={compositing}
-                    className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 disabled:opacity-40 text-sm font-medium rounded-lg transition-colors">
-                    {compositing
-                      ? <><span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />处理中...</>
-                      : <><img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />添加 Logo</>}
-                  </button>
-                ) : (
-                  <button onClick={handleRemoveLogo}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">
-                    ✕ 移除 Logo
-                  </button>
-                )}
+                <button onClick={handleAddLogo} disabled={compositing}
+                  className="flex items-center gap-2 px-3 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 disabled:opacity-40 text-sm font-medium rounded-lg transition-colors whitespace-nowrap">
+                  {compositing && !partnerLogo
+                    ? <><span className="w-3.5 h-3.5 border-2 border-slate-400 border-t-transparent rounded-full animate-spin" />处理中...</>
+                    : <><img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />添加 Logo</>}
+                </button>
+                <select
+                  value={partnerLogo ? selectedBrand : 'none'}
+                  disabled={compositing}
+                  onChange={async e => {
+                    const v = e.target.value
+                    if (v === 'none') { setSelectedBrand('none'); return }
+                    const url = getBrandLogoUrl(v)
+                    if (url) await loadIntoSlot('partner', url, { x: 0.15, y: 0.10 }, v)
+                  }}
+                  className="flex-1 min-w-0 bg-white border border-slate-200 text-slate-700 text-sm rounded-lg px-3 py-2 focus:outline-none focus:border-blue-400 disabled:opacity-60"
+                >
+                  {OTHER_BRANDS.map(b => (
+                    <option key={b.value} value={b.value}>{b.label}</option>
+                  ))}
+                </select>
 
                 {/* 下载按钮 */}
                 <button
@@ -1238,11 +1356,7 @@ export default function ImageDesignStudio() {
                     // Small delay to let state settle before compositing
                     setTimeout(async () => {
                       try {
-                        const poster = await loadImg(detailImage!)
-                        const logo = await loadImg('/bigoffs-logo.png')
-                        posterImgRef.current = poster
-                        logoImgRef.current = logo
-                        setWithLogo(true)
+                        await loadIntoSlot('bigoffs', '/bigoffs-logo.png', { x: 0.85, y: 0.10 })
                       } catch (e) {
                         console.error('Logo compositing failed', e)
                       }
@@ -1251,19 +1365,19 @@ export default function ImageDesignStudio() {
                   className="w-full py-2.5 rounded-xl bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium flex items-center justify-center gap-2"
                 >
                   <img src="/bigoffs-logo.png" alt="" className="h-4 w-auto" />
-                  一键添加 Logo
+                  添加 Logo
                 </button>
                 <button
                   onClick={async () => {
-                    const a = document.createElement('a')
-                    a.href = detailImage!
-                    a.download = `ai-design-${Date.now()}.jpg`
-                    a.click()
+                    const filename = `ai-design-${Date.now()}.jpg`
                     try {
                       const { urlToDataUrl, saveToGallery } = await import('@/lib/gallery')
                       const dataUrl = await urlToDataUrl(detailImage!)
-                      await saveToGallery({ dataUrl, filename: a.download, source: 'image-design' }, user?.username)
-                    } catch {}
+                      await downloadDataUrl(dataUrl, filename)
+                      await saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
+                    } catch (e) {
+                      console.error('Download failed', e)
+                    }
                   }}
                   className="w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium flex items-center justify-center gap-2"
                 >

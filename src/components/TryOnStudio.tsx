@@ -18,51 +18,56 @@ export default function TryOnStudio() {
   return (
     <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
       {/* Header */}
-      <header className="bigoffs-header px-6 flex items-center justify-between overflow-hidden" style={{ height: 60 }}>
-        <div className="flex items-center gap-3">
-          <Logo />
-          <div>
-            <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-slate-400">AI 商品图背景替换</p>
+      <header className="bigoffs-header px-2 md:px-6 flex items-center justify-between overflow-hidden flex-shrink-0 gap-2" style={{ height: 60 }}>
+        <div className="flex items-center gap-1.5 md:gap-3 min-w-0">
+          <div className="md:hidden"><Logo size="sm" /></div>
+          <div className="hidden md:block"><Logo /></div>
+          <div className="min-w-0">
+            <h1 className="text-sm md:text-lg font-bold text-white truncate leading-tight">智能推广平台</h1>
+            <p className="text-[10px] md:text-xs text-slate-400 truncate leading-tight">AI 换装</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-4 min-w-0">
+        <div className="flex items-center gap-1.5 md:gap-3 flex-shrink-0">
           {state.status !== 'idle' && (
             <button
               onClick={reset}
-              className="text-sm text-slate-300 hover:text-white transition-colors px-3 py-1.5 rounded-lg hover:bg-white/10 flex-shrink-0"
+              title="重新开始"
+              className="text-xs md:text-sm text-slate-300 hover:text-white transition-colors px-2 md:px-3 py-1.5 rounded-lg hover:bg-white/10 flex-shrink-0 whitespace-nowrap flex items-center"
             >
-              重新开始
+              <svg className="w-4 h-4 md:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+              </svg>
+              <span className="hidden md:inline">重新开始</span>
             </button>
           )}
 
           {/* User info */}
           {user && (
-            <div className="flex items-center gap-3 pl-4 border-l border-white/10 flex-shrink-0">
-              <div className="text-right max-w-[120px] min-w-0">
+            <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10 flex-shrink-0">
+              <div className="text-right hidden sm:block min-w-0">
                 <p className="text-sm text-white font-medium truncate">{user.name}</p>
                 <p className="text-xs text-slate-400 truncate">
                   {ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}
                 </p>
               </div>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: '#0034cc' }}>
+              <div className="w-7 h-7 md:w-8 md:h-8 rounded-full flex items-center justify-center text-xs md:text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
                 {user.name[0]}
               </div>
               <button
                 onClick={logout}
-                className="text-xs text-slate-400 hover:text-white transition-colors px-2 py-1 rounded hover:bg-white/10 flex-shrink-0"
+                className="text-xs text-slate-400 hover:text-white transition-colors px-1.5 md:px-2 py-1 rounded hover:bg-white/10 flex-shrink-0 whitespace-nowrap"
               >
                 退出
               </button>
             </div>
           )}
-          <span className="text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
+          <span className="hidden md:inline text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
         </div>
       </header>
 
       {/* Nav */}
-      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅' },
           { label: '模板社区', href: '/templates', icon: '🎨' },
@@ -87,9 +92,9 @@ export default function TryOnStudio() {
       </nav>
 
       {/* Main layout */}
-      <main className="max-w-6xl mx-auto px-6 py-8 grid grid-cols-1 lg:grid-cols-2 gap-8 min-h-[calc(100vh-65px)]">
+      <main className="max-w-6xl mx-auto px-3 md:px-6 py-3 md:py-8 grid grid-cols-1 lg:grid-cols-2 gap-3 md:gap-8 min-h-[calc(100vh-65px)]">
         {/* Left: Upload */}
-        <div className="glass-card rounded-2xl p-6 flex flex-col">
+        <div className="glass-card rounded-2xl p-3 md:p-6 flex flex-col">
           <UploadPanel
             previewUrl={state.clothingPreviewUrl}
             detectedStyle={state.detectedStyle}
@@ -105,7 +110,7 @@ export default function TryOnStudio() {
         </div>
 
         {/* Right: Preview */}
-        <div className="glass-card rounded-2xl p-6 flex flex-col">
+        <div className="glass-card rounded-2xl p-3 md:p-6 flex flex-col">
           {generateError && (
             <div className="mb-3 px-3 py-2 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700 flex items-start gap-2">
               <span className="mt-0.5">⚠️</span>

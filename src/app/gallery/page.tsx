@@ -350,31 +350,31 @@ function GalleryContent() {
   return (
     <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
       {/* Header */}
-      <header className="bigoffs-header px-6 flex items-center justify-between overflow-hidden" style={{ height: 60 }}>
-        <div className="flex items-center gap-3">
+      <header className="bigoffs-header px-3 md:px-6 flex items-center justify-between overflow-hidden flex-shrink-0" style={{ height: 60 }}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <Logo />
-          <div>
-            <h1 className="text-lg font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-slate-400">我的图库</p>
+          <div className="min-w-0">
+            <h1 className="text-base md:text-lg font-bold text-white truncate">智能推广平台</h1>
+            <p className="text-xs text-slate-400 truncate">我的图库</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           {user && (
-            <div className="flex items-center gap-3 flex-shrink-0">
-              <div className="text-right max-w-[120px] min-w-0">
+            <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
+              <div className="text-right hidden sm:block min-w-0">
                 <p className="text-sm text-white font-medium truncate">{user.name}</p>
                 <p className="text-xs text-slate-400 truncate">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
               </div>
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>{user.name[0]}</div>
-              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0">退出</button>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0 whitespace-nowrap">退出</button>
             </div>
           )}
-          <span className="text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
+          <span className="hidden md:inline text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
         </div>
       </header>
 
       {/* Nav */}
-      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {NAV.map(item => (
           <a key={item.label} href={item.href} className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
             item.active ? 'text-white' : 'border-transparent text-slate-400 hover:text-white hover:border-white/30'

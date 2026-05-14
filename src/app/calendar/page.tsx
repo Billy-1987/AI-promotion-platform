@@ -119,48 +119,36 @@ function CalendarContent() {
     if (file) uploadFile(file)
   }
 
-  async function handleDownload() {
-    const res = await fetch('/api/calendar/download')
-    if (!res.ok) return
-    const blob = await res.blob()
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = meta?.filename ?? 'calendar.xlsx'
-    a.click()
-    URL.revokeObjectURL(url)
-  }
-
   const currentWeek = getCurrentWeek()
 
   return (
     <div className="min-h-screen" style={{ background: '#f0f2f7' }}>
-      <header className="bigoffs-header px-6 flex items-center justify-between overflow-hidden" style={{ height: 60 }}>
-        <div className="flex items-center gap-4">
+      <header className="bigoffs-header px-3 md:px-6 flex items-center justify-between overflow-hidden flex-shrink-0" style={{ height: 60 }}>
+        <div className="flex items-center gap-2 md:gap-3 min-w-0">
           <Logo />
-          <div>
-            <h1 className="text-base font-bold text-white">智能推广平台</h1>
-            <p className="text-xs text-slate-400">运营日历</p>
+          <div className="min-w-0">
+            <h1 className="text-base md:text-lg font-bold text-white truncate">智能推广平台</h1>
+            <p className="text-xs text-slate-400 truncate">运营日历</p>
           </div>
         </div>
-        <div className="flex items-center gap-3 min-w-0">
+        <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
           {user && (
-            <div className="flex items-center gap-3 pl-4 border-l border-white/10 flex-shrink-0">
-              <div className="text-right max-w-[120px] min-w-0">
+            <div className="flex items-center gap-2 md:gap-3 md:pl-4 md:border-l md:border-white/10 flex-shrink-0">
+              <div className="text-right hidden sm:block min-w-0">
                 <p className="text-sm text-white font-medium truncate">{user.name}</p>
                 <p className="text-xs text-slate-400 truncate">{ROLE_LABEL[user.role]}{user.region ? ` · ${user.region}` : ''}</p>
               </div>
               <div className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold text-white flex-shrink-0" style={{ background: '#0034cc' }}>
                 {user.name[0]}
               </div>
-              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0">退出</button>
+              <button onClick={logout} className="text-xs text-slate-400 hover:text-white px-2 py-1 rounded hover:bg-white/10 transition-colors flex-shrink-0 whitespace-nowrap">退出</button>
             </div>
           )}
-          <span className="text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
+          <span className="hidden md:inline text-xs text-slate-400 ml-1 flex-shrink-0">{APP_VERSION}</span>
         </div>
       </header>
 
-      <nav className="bigoffs-header border-b border-white/10 px-6 flex gap-1">
+      <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {[
           { label: '运营日历', href: '/calendar', icon: '📅', active: true },
           { label: '模板社区', href: '/templates', icon: '🎨' },
@@ -184,7 +172,7 @@ function CalendarContent() {
         ))}
       </nav>
 
-      <main className="max-w-5xl mx-auto px-6 py-8">
+      <main className="max-w-5xl mx-auto px-3 md:px-6 py-4 md:py-8">
 
         {/* 品牌详情视图 */}
         {selectedBrand ? (
@@ -196,17 +184,17 @@ function CalendarContent() {
           />
         ) : (
           <>
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h2 className="text-2xl font-bold text-slate-800">运营日历</h2>
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4 md:mb-6">
+              <div className="min-w-0">
+                <h2 className="text-xl md:text-2xl font-bold text-slate-800">运营日历</h2>
                 {meta?.uploadedAt && (
-                  <p className="text-xs text-slate-400 mt-1">
+                  <p className="text-xs text-slate-400 mt-1 truncate">
                     最近更新：{new Date(meta.uploadedAt).toLocaleString('zh-CN')}
                     {meta.filename && <span className="ml-2 text-slate-300">· {meta.filename}</span>}
                   </p>
                 )}
               </div>
-              <div className="flex items-center gap-3">
+              <div className="flex items-center gap-2 flex-wrap">
                 {isHQ && (
                   <>
                     <input ref={fileRef} type="file" onChange={handleFileInput} className="hidden" />
@@ -219,7 +207,7 @@ function CalendarContent() {
                       <button
                         onClick={() => fileRef.current?.click()}
                         disabled={uploading}
-                        className="px-4 py-2 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2"
+                        className="px-3 md:px-4 py-2 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-all flex items-center gap-2 whitespace-nowrap flex-shrink-0"
                         style={{ background: dragging ? '#0045ff' : '#0034cc' }}
                       >
                         {uploading
@@ -228,19 +216,20 @@ function CalendarContent() {
                       </button>
                     </div>
                     {uploadMsg && (
-                      <span className={`text-sm ${uploadMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500'}`}>
+                      <span className={`text-sm ${uploadMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500'} truncate`}>
                         {uploadMsg}
                       </span>
                     )}
                   </>
                 )}
                 {meta?.uploaded && (
-                  <button
-                    onClick={handleDownload}
-                    className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-sm"
+                  <a
+                    href="/api/calendar/download"
+                    download={meta?.filename ?? 'calendar.xlsx'}
+                    className="px-3 md:px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors flex items-center gap-2 shadow-sm whitespace-nowrap flex-shrink-0"
                   >
                     ⬇ 下载原始文件
-                  </button>
+                  </a>
                 )}
               </div>
             </div>
@@ -410,37 +399,35 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
   isHQ?: boolean
 }) {
   return (
-    <div className="flex gap-3 items-start">
-      {/* 当前周标签 */}
-      <div className="w-20 shrink-0 pt-3 flex flex-col items-center gap-1.5">
-        {currentWeek && (
-          <>
-            <span className="text-sm text-slate-500 font-medium">当前</span>
-            <span className="px-3 py-1.5 border text-base font-bold rounded-xl text-center" style={{ background: 'rgba(252,234,66,0.15)', borderColor: 'rgba(252,234,66,0.5)', color: '#b45309' }}>
-              {currentWeek}
-            </span>
-          </>
-        )}
-      </div>
+    <div className="flex flex-col md:flex-row md:gap-3 md:items-start gap-1">
+      {/* 当前周标签 — mobile: 卡片上方一行 badge / desktop: 左侧列 */}
+      {currentWeek && (
+        <div className="md:w-20 md:shrink-0 md:pt-3 flex md:flex-col items-center gap-2 md:gap-1.5">
+          <span className="text-xs md:text-sm text-slate-500 font-medium">当前</span>
+          <span className="px-2.5 md:px-3 py-1 md:py-1.5 border text-sm md:text-base font-bold rounded-lg md:rounded-xl text-center" style={{ background: 'rgba(252,234,66,0.15)', borderColor: 'rgba(252,234,66,0.5)', color: '#b45309' }}>
+            {currentWeek}
+          </span>
+        </div>
+      )}
 
       {/* 卡片主体 */}
-      <div className="flex-1 glass-card rounded-2xl overflow-hidden">
-        <div className="flex items-center gap-4 px-6 py-4 border-b border-slate-200/60">
-          <span className="px-3 py-1 text-white text-sm font-bold rounded-lg" style={{ background: '#0034cc' }}>{entry.week}</span>
-          <span className="text-slate-500 text-sm">{entry.month} 月</span>
-          <span className="text-slate-800 font-semibold text-base flex-1">{entry.title}</span>
-          <span className="text-slate-400 text-sm shrink-0">{entry.brands.length} 个品牌 · {Array.from(itemBrandCount.values()).reduce((s, n) => s + n, 0) || entry.brands.reduce((s, b) => s + b.count, 0)} 款</span>
+      <div className="flex-1 min-w-0 glass-card rounded-2xl overflow-hidden">
+        <div className="flex flex-wrap items-center gap-2 md:gap-4 px-3 md:px-6 py-3 md:py-4 border-b border-slate-200/60">
+          <span className="px-2.5 md:px-3 py-1 text-white text-sm font-bold rounded-lg whitespace-nowrap flex-shrink-0" style={{ background: '#0034cc' }}>{entry.week}</span>
+          <span className="text-slate-500 text-sm whitespace-nowrap flex-shrink-0">{entry.month} 月</span>
+          <span className="text-slate-800 font-semibold text-sm md:text-base flex-1 min-w-0 truncate">{entry.title}</span>
+          <span className="text-slate-400 text-xs md:text-sm shrink-0 whitespace-nowrap">{entry.brands.length} 品牌 · {Array.from(itemBrandCount.values()).reduce((s, n) => s + n, 0) || entry.brands.reduce((s, b) => s + b.count, 0)} 款</span>
           {hasRecommend && (
             <button
               onClick={() => onRecommendClick(entry.week)}
-              className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg border transition-colors hover:shadow-sm"
+              className="shrink-0 flex items-center gap-1.5 px-2 md:px-3 py-1 md:py-1.5 text-xs font-semibold rounded-lg border transition-colors hover:shadow-sm whitespace-nowrap"
               style={{ background: 'rgba(252,234,66,0.12)', borderColor: 'rgba(252,234,66,0.5)', color: '#92400e' }}
             >
               <span>⭐</span> 单款推荐
             </button>
           )}
         </div>
-        <div className="px-6 py-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+        <div className="px-3 md:px-6 py-3 md:py-4 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 md:gap-3">
           {entry.brands.map((b, i) => {
             const c = BRAND_COLORS[i % BRAND_COLORS.length]
             const hasItems = itemBrands.has(b.name)
@@ -463,7 +450,7 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
         {weekNote ? (
           <button
             onClick={() => onEditNote(entry.week, weekNote)}
-            className="w-full px-6 py-3 text-left border-t border-amber-100 bg-gradient-to-r hover:from-amber-50 hover:to-yellow-50 transition-colors group flex items-start gap-3"
+            className="w-full px-3 md:px-6 py-3 text-left border-t border-amber-100 bg-gradient-to-r hover:from-amber-50 hover:to-yellow-50 transition-colors group flex items-start gap-3"
           >
             <span className="shrink-0 text-amber-400 text-lg mt-0.5">💬</span>
             <div className="min-w-0">
@@ -477,7 +464,7 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
         ) : isHQ ? (
           <button
             onClick={() => onEditNote(entry.week, '')}
-            className="w-full px-6 py-2.5 text-left text-xs text-slate-300 hover:text-amber-500 border-t border-transparent hover:border-amber-100 hover:bg-amber-50/30 transition-all"
+            className="w-full px-3 md:px-6 py-2.5 text-left text-xs text-slate-300 hover:text-amber-500 border-t border-transparent hover:border-amber-100 hover:bg-amber-50/30 transition-all"
           >
             + 添加本周推广提示
           </button>

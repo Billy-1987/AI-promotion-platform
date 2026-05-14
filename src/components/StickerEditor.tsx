@@ -815,6 +815,7 @@ function StickerItem({ sticker, selected, displaySize, onSelect, onUpdate, onCom
 type TabId = 'text' | 'shape' | 'emoji'
 const HISTORY_LIMIT = 20
 const DRAWER_HEIGHT = 280
+const DRAWER_HEIGHT_MOBILE = 220
 
 interface PanelText {
   content: string
@@ -1519,7 +1520,10 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
   ]
 
   return (
-    <div className="fixed inset-0 z-[9999] bg-zinc-950 flex flex-col select-none">
+    <div
+      className="fixed top-0 left-0 right-0 z-[9999] bg-zinc-950 flex flex-col select-none overflow-hidden"
+      style={{ height: '100dvh' }}
+    >
       <canvas ref={canvasRef} className="hidden" />
 
       {/* Header */}
@@ -1713,7 +1717,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       <div
         className="bg-zinc-900 border-t border-zinc-800 overflow-y-auto flex-shrink-0"
         style={{
-          height: DRAWER_HEIGHT,
+          height: `clamp(${DRAWER_HEIGHT_MOBILE}px, 35vh, ${DRAWER_HEIGHT}px)`,
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
