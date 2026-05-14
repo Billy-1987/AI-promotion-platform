@@ -1,8 +1,10 @@
-export type StyleTag = 'sport' | 'outdoor' | 'menswear' | 'womenswear' | 'kids' | 'trendy' | 'vintage' | 'workwear'
+export type StyleTag = 'sport' | 'outdoor' | 'trendy' | 'casual' | 'preppy' | 'vintage' | 'workwear'
 
 export type ProductCategory = 'clothing' | 'shoes'
 
-export type ModelGender = 'female' | 'male' | 'kids'
+export type ModelGender = 'female' | 'male'
+
+export type ModelAge = 'baby' | 'child' | 'teen' | 'young' | 'middle' | 'senior'
 
 export type TryOnAspectRatio = '3:4' | '1:1' | '4:3' | '9:16'
 
@@ -50,6 +52,7 @@ export interface TryOnState {
   clothingPreviewUrl: string | null
   detectedStyle: StyleTag | null
   modelGender: ModelGender
+  modelAge: ModelAge
   aspectRatio: TryOnAspectRatio
   selectedBackground: string | null
   resultUrl: string | null

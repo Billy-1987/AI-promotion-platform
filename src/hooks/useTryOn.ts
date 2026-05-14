@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useCallback } from 'react'
-import { TryOnState, TryOnResult, StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
+import { TryOnState, TryOnResult, StyleTag, ModelGender, ModelAge, TryOnAspectRatio } from '@/types'
 import { suggestBackgrounds, generateTryOn } from '@/lib/mockAI'
 import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import { makeLogger, formatBytes } from '@/lib/logger'
@@ -15,6 +15,7 @@ export function useTryOn(username?: string) {
     clothingPreviewUrl: null,
     detectedStyle: null,
     modelGender: 'female',
+    modelAge: 'young',
     aspectRatio: '3:4',
     selectedBackground: null,
     resultUrl: null,
@@ -43,7 +44,7 @@ export function useTryOn(username?: string) {
     probe.onerror = () => log.error('preview probe FAILED — browser cannot render blob URL (likely CSP img-src blocking blob:, or file unreadable)')
     probe.src = previewUrl
 
-    const defaultStyle: StyleTag = 'womenswear'
+    const defaultStyle: StyleTag = 'casual'
     const defaultCategory: 'clothing' | 'shoes' = 'clothing'
     const backgrounds = suggestBackgrounds(defaultStyle, defaultCategory)
     setSuggestedBackgrounds(backgrounds)
@@ -77,6 +78,10 @@ export function useTryOn(username?: string) {
     setState(prev => ({ ...prev, modelGender: gender }))
   }, [])
 
+  const selectAge = useCallback((age: ModelAge) => {
+    setState(prev => ({ ...prev, modelAge: age }))
+  }, [])
+
   const selectAspectRatio = useCallback((ratio: TryOnAspectRatio) => {
     setState(prev => ({ ...prev, aspectRatio: ratio }))
   }, [])
@@ -98,6 +103,7 @@ export function useTryOn(username?: string) {
         undefined,
         state.modelGender,
         state.aspectRatio,
+        state.modelAge,
       )
       setState(prev => ({ ...prev, status: 'result', resultUrl: result.previewUrl, tryOnResult: result }))
       // Auto-save to gallery
@@ -114,7 +120,7 @@ export function useTryOn(username?: string) {
       setGenerateError(msg)
       setState(prev => ({ ...prev, status: 'ready' }))
     }
-  }, [state.clothingFile, state.selectedBackground, state.detectedStyle, state.analysis, state.modelGender, state.aspectRatio])
+  }, [state.clothingFile, state.selectedBackground, state.detectedStyle, state.analysis, state.modelGender, state.modelAge, state.aspectRatio])
 
   const reset = useCallback(() => {
     if (state.clothingPreviewUrl) URL.revokeObjectURL(state.clothingPreviewUrl)
@@ -126,6 +132,7 @@ export function useTryOn(username?: string) {
       clothingPreviewUrl: null,
       detectedStyle: null,
       modelGender: 'female',
+      modelAge: 'young',
       aspectRatio: '3:4',
       selectedBackground: null,
       resultUrl: null,
@@ -136,5 +143,5 @@ export function useTryOn(username?: string) {
     setGenerateError(null)
   }, [state.clothingPreviewUrl])
 
-  return { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset }
+  return { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAge, selectAspectRatio, generate, reset }
 }

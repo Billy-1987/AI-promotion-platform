@@ -2,7 +2,7 @@
 
 import { useRef, DragEvent } from 'react'
 import StyleTagSelector from './StyleTagSelector'
-import { StyleTag, ModelGender, TryOnAspectRatio } from '@/types'
+import { StyleTag, ModelGender, ModelAge, TryOnAspectRatio } from '@/types'
 
 interface Props {
   previewUrl: string | null
@@ -10,17 +10,27 @@ interface Props {
   detecting: boolean
   isShoes: boolean
   modelGender: ModelGender
+  modelAge: ModelAge
   aspectRatio: TryOnAspectRatio
   onUpload: (file: File) => void
   onStyleSelect: (tag: StyleTag) => void
   onGenderSelect: (gender: ModelGender) => void
+  onAgeSelect: (age: ModelAge) => void
   onAspectRatioSelect: (ratio: TryOnAspectRatio) => void
 }
 
 const GENDER_OPTIONS: { value: ModelGender; label: string; emoji: string }[] = [
-  { value: 'female', label: '成人女', emoji: '👩' },
-  { value: 'male',   label: '成人男', emoji: '👨' },
-  { value: 'kids',   label: '儿童',   emoji: '🧒' },
+  { value: 'female', label: '女', emoji: '👩' },
+  { value: 'male',   label: '男', emoji: '👨' },
+]
+
+const AGE_OPTIONS: { value: ModelAge; label: string }[] = [
+  { value: 'baby',   label: '婴幼儿' },
+  { value: 'child',  label: '儿童' },
+  { value: 'teen',   label: '少年' },
+  { value: 'young',  label: '青年' },
+  { value: 'middle', label: '中年' },
+  { value: 'senior', label: '老年' },
 ]
 
 const RATIO_OPTIONS: { value: TryOnAspectRatio; label: string; w: number; h: number }[] = [
@@ -32,8 +42,8 @@ const RATIO_OPTIONS: { value: TryOnAspectRatio; label: string; w: number; h: num
 
 export default function UploadPanel({
   previewUrl, detectedStyle, detecting, isShoes,
-  modelGender, aspectRatio,
-  onUpload, onStyleSelect, onGenderSelect, onAspectRatioSelect,
+  modelGender, modelAge, aspectRatio,
+  onUpload, onStyleSelect, onGenderSelect, onAgeSelect, onAspectRatioSelect,
 }: Props) {
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -94,10 +104,10 @@ export default function UploadPanel({
         className="hidden"
       />
 
-      {/* 性别/年龄选择 — 仅服装模式 */}
+      {/* 性别选择 — 仅服装模式 */}
       {!isShoes && (
         <div className="mb-3">
-          <p className="text-xs text-slate-500 mb-2">模特性别 / 年龄</p>
+          <p className="text-xs text-slate-500 mb-2">模特性别</p>
           <div className="flex gap-2">
             {GENDER_OPTIONS.map(g => (
               <button
@@ -112,6 +122,29 @@ export default function UploadPanel({
               >
                 <span>{g.emoji}</span>
                 {g.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 年龄选择 — 仅服装模式 */}
+      {!isShoes && (
+        <div className="mb-3">
+          <p className="text-xs text-slate-500 mb-2">模特年龄</p>
+          <div className="grid grid-cols-3 gap-2">
+            {AGE_OPTIONS.map(a => (
+              <button
+                key={a.value}
+                onClick={() => onAgeSelect(a.value)}
+                className={`px-2 py-1.5 rounded-full text-sm font-medium transition-all whitespace-nowrap ${
+                  modelAge === a.value
+                    ? 'text-white'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'
+                }`}
+                style={modelAge === a.value ? { background: '#0034cc' } : {}}
+              >
+                {a.label}
               </button>
             ))}
           </div>

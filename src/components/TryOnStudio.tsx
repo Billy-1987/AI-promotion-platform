@@ -11,7 +11,7 @@ const ROLE_LABEL = { hq: '总部市场部', regional: '区域运营' }
 
 export default function TryOnStudio() {
   const { user, logout } = useAuth()
-  const { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAspectRatio, generate, reset } = useTryOn(user?.username)
+  const { state, generateError, suggestedBackgrounds, uploadClothing, selectBackground, selectStyle, selectGender, selectAge, selectAspectRatio, generate, reset } = useTryOn(user?.username)
 
   const isShoes = state.analysis?.productCategory === 'shoes'
 
@@ -101,10 +101,12 @@ export default function TryOnStudio() {
             detecting={state.status === 'detecting'}
             isShoes={isShoes}
             modelGender={state.modelGender}
+            modelAge={state.modelAge}
             aspectRatio={state.aspectRatio}
             onUpload={uploadClothing}
             onStyleSelect={selectStyle}
             onGenderSelect={selectGender}
+            onAgeSelect={selectAge}
             onAspectRatioSelect={selectAspectRatio}
           />
         </div>

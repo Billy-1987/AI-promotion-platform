@@ -33,18 +33,20 @@ function loadImg(src: string): Promise<HTMLImageElement> {
 async function compositeWithLogo(
   dataUrl: string,
   logoSrc: string,
-  pos: { x: number; y: number },
+  pos: { x: number; y: number; scale: number },
 ): Promise<string> {
   const [poster, logo] = await Promise.all([loadImg(dataUrl), loadImg(logoSrc)])
   const canvas = document.createElement('canvas')
   canvas.width = poster.naturalWidth
   canvas.height = poster.naturalHeight
   const ctx = canvas.getContext('2d')!
+  ctx.imageSmoothingEnabled = true
+  ctx.imageSmoothingQuality = 'high'
   ctx.drawImage(poster, 0, 0)
-  const logoW = poster.naturalWidth * 0.22
+  const logoW = poster.naturalWidth * pos.scale
   const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
   ctx.drawImage(logo, poster.naturalWidth * pos.x - logoW / 2, poster.naturalHeight * pos.y - logoH / 2, logoW, logoH)
-  return canvas.toDataURL('image/jpeg', 0.92)
+  return canvas.toDataURL('image/jpeg', 0.95)
 }
 
 // ─── 单张卡片 ─────────────────────────────────────────────────────────────────
@@ -111,27 +113,79 @@ function BatchLogoModal({
   onClose,
 }: {
   count: number
-  onConfirm: (pos: { x: number; y: number }) => void
+  onConfirm: (pos: { x: number; y: number; scale: number }) => void
   onClose: () => void
 }) {
-  const [pos, setPos] = useState({ x: 0.5, y: 0.88 })
+  const [pos, setPos] = useState({ x: 0.85, y: 0.10 })
+  const [scale, setScale] = useState(0.22)
   const [dragging, setDragging] = useState(false)
   const previewRef = useRef<HTMLDivElement>(null)
 
-  function updatePos(clientX: number, clientY: number) {
-    const el = previewRef.current
-    if (!el) return
-    const rect = el.getBoundingClientRect()
-    let x = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    let y = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height))
-    if (Math.abs(x - 0.5) < 0.03) x = 0.5
-    if (Math.abs(y - 0.5) < 0.03) y = 0.5
-    setPos({ x, y })
+  // 拖 logo 主体 → 移动位置（offset-based，不再 teleport）
+  function startDrag(e: React.PointerEvent) {
+    if ((e.target as HTMLElement).dataset.handle) return
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = previewRef.current
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const startX = e.clientX
+    const startY = e.clientY
+    const origX = pos.x * rect.width
+    const origY = pos.y * rect.height
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+    setDragging(true)
+
+    const onMove = (ev: PointerEvent) => {
+      let nx = Math.max(0.02, Math.min(0.98, (origX + ev.clientX - startX) / rect.width))
+      let ny = Math.max(0.02, Math.min(0.98, (origY + ev.clientY - startY) / rect.height))
+      if (Math.abs(nx - 0.5) < 0.015) nx = 0.5
+      if (Math.abs(ny - 0.5) < 0.015) ny = 0.5
+      setPos({ x: nx, y: ny })
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+      setDragging(false)
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
   }
 
-  // logo 预览尺寸（相对于预览框）
-  const logoPreviewW = 22  // % of preview width
-  const logoPreviewH = logoPreviewW / (3864 / 1023) // 保持比例
+  // 拖 ↘ 角手柄 → 缩放
+  function startResize(e: React.PointerEvent) {
+    e.preventDefault()
+    e.stopPropagation()
+    const overlay = previewRef.current
+    if (!overlay) return
+    const rect = overlay.getBoundingClientRect()
+    const cx = pos.x * rect.width
+    const cy = pos.y * rect.height
+    const startDist = Math.hypot(e.clientX - rect.left - cx, e.clientY - rect.top - cy) || 1
+    const baseScale = scale
+    const pid = e.pointerId
+    const target = e.currentTarget as HTMLDivElement
+    target.setPointerCapture(pid)
+
+    const onMove = (ev: PointerEvent) => {
+      const d = Math.hypot(ev.clientX - rect.left - cx, ev.clientY - rect.top - cy)
+      setScale(Math.max(0.05, Math.min(0.6, +(baseScale * d / startDist).toFixed(4))))
+    }
+    const onUp = () => {
+      target.removeEventListener('pointermove', onMove)
+      target.removeEventListener('pointerup', onUp)
+      target.removeEventListener('pointercancel', onUp)
+      try { target.releasePointerCapture(pid) } catch {}
+    }
+    target.addEventListener('pointermove', onMove)
+    target.addEventListener('pointerup', onUp)
+    target.addEventListener('pointercancel', onUp)
+  }
 
   return (
     <div className="fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -145,57 +199,81 @@ function BatchLogoModal({
         </div>
 
         <div className="p-6">
-          <p className="text-sm text-slate-500 mb-3">拖动下方预览框设置 Logo 位置，所有图片将使用相同位置</p>
+          <p className="text-sm text-slate-500 mb-3">拖动 Logo 设置位置；拖动右下角黄点缩放</p>
 
           {/* 位置预览框 */}
           <div
             ref={previewRef}
-            className="relative w-full aspect-[3/4] bg-slate-100 rounded-xl overflow-hidden cursor-crosshair border border-slate-300 select-none"
-            onMouseDown={e => { setDragging(true); updatePos(e.clientX, e.clientY) }}
-            onMouseMove={e => { if (dragging) updatePos(e.clientX, e.clientY) }}
-            onMouseUp={() => setDragging(false)}
-            onMouseLeave={() => setDragging(false)}
-            onTouchStart={e => { setDragging(true); updatePos(e.touches[0].clientX, e.touches[0].clientY) }}
-            onTouchMove={e => { if (dragging) { e.preventDefault(); updatePos(e.touches[0].clientX, e.touches[0].clientY) } }}
-            onTouchEnd={() => setDragging(false)}
+            className="relative w-full aspect-[3/4] bg-slate-100 rounded-xl overflow-hidden border border-slate-300 select-none"
           >
             {/* 背景格子 */}
             <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'repeating-linear-gradient(0deg,#666 0,#666 1px,transparent 1px,transparent 40px),repeating-linear-gradient(90deg,#666 0,#666 1px,transparent 1px,transparent 40px)' }} />
 
-            {/* 居中辅助线 */}
-            <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l border-dashed border-white/30" />
-            <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t border-dashed border-white/30" />
+            {/* 拖动时辅助线 */}
+            {dragging && (
+              <>
+                <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l border-dashed border-white/40 pointer-events-none" />
+                <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t border-dashed border-white/40 pointer-events-none" />
+                {pos.x === 0.5 && <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-solid border-yellow-400 pointer-events-none" />}
+                {pos.y === 0.5 && <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-solid border-yellow-400 pointer-events-none" />}
+              </>
+            )}
 
-            {/* 吸附高亮 */}
-            {pos.x === 0.5 && <div className="absolute top-0 bottom-0 left-1/2 -translate-x-px border-l-2 border-solid border-yellow-400/80" />}
-            {pos.y === 0.5 && <div className="absolute left-0 right-0 top-1/2 -translate-y-px border-t-2 border-solid border-yellow-400/80" />}
-
-            {/* Logo 预览 */}
+            {/* Logo overlay — 拖主体移位置，拖 ↘ 角缩放 */}
             <div
+              onPointerDown={startDrag}
               className="absolute"
               style={{
                 left: `${pos.x * 100}%`,
                 top: `${pos.y * 100}%`,
+                width: `${scale * 100}%`,
                 transform: 'translate(-50%, -50%)',
-                width: `${logoPreviewW}%`,
+                cursor: dragging ? 'grabbing' : 'grab',
+                touchAction: 'none',
               }}
             >
-              <img src="/bigoffs-logo.png" alt="logo" className="w-full h-auto" draggable={false} />
+              <img src="/bigoffs-logo.png" alt="logo" className="block w-full h-auto select-none" style={{ pointerEvents: 'none' }} draggable={false} />
+              {/* 黄色虚线选择框 */}
+              <div className="absolute pointer-events-none border-2 border-dashed" style={{ inset: -4, borderColor: '#fceb42' }} />
+              {/* ↘ 缩放手柄 */}
+              <div
+                data-handle="resize"
+                onPointerDown={startResize}
+                className="absolute rounded-full flex items-center justify-center"
+                style={{
+                  right: -14, bottom: -14, width: 28, height: 28,
+                  background: '#fceb42', border: '2px solid #111',
+                  cursor: 'nwse-resize', touchAction: 'none',
+                  boxShadow: '0 2px 6px rgba(0,0,0,0.35)',
+                  fontSize: 14, lineHeight: 1, color: '#111', fontWeight: 700,
+                }}
+                title="拖动缩放 Logo"
+              >↘</div>
+              {/* 装饰角点 */}
+              {(['nw', 'ne', 'sw'] as const).map(corner => (
+                <div
+                  key={corner}
+                  className="absolute pointer-events-none rounded-full"
+                  style={{
+                    width: 10, height: 10,
+                    background: '#fceb42', border: '2px solid #111',
+                    ...(corner.includes('n') ? { top: -5 } : { bottom: -5 }),
+                    ...(corner.includes('w') ? { left: -5 } : { right: -5 }),
+                  }}
+                />
+              ))}
             </div>
-
-            <p className="absolute bottom-2 left-0 right-0 text-center text-xs text-white/50">点击或拖动设置位置</p>
           </div>
 
           <p className="text-xs text-slate-500 mt-2 text-center">
-            位置：水平 {Math.round(pos.x * 100)}% · 垂直 {Math.round(pos.y * 100)}%
-            {pos.x === 0.5 ? ' · 水平居中 ✓' : ''}
+            位置：水平 {Math.round(pos.x * 100)}% · 垂直 {Math.round(pos.y * 100)}% · 大小 {Math.round(scale * 100)}%
           </p>
         </div>
 
         <div className="flex gap-3 px-6 pb-6">
           <button onClick={onClose} className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">取消</button>
           <button
-            onClick={() => onConfirm(pos)}
+            onClick={() => onConfirm({ ...pos, scale })}
             className="flex-1 py-2.5 text-white text-sm font-medium rounded-lg transition-colors"
             style={{ background: '#0034cc' }}
           >
@@ -315,7 +393,7 @@ function GalleryContent() {
   }
 
   // 批量加 Logo
-  async function handleBatchLogo(pos: { x: number; y: number }) {
+  async function handleBatchLogo(pos: { x: number; y: number; scale: number }) {
     setShowBatchLogo(false)
     const targets = items.filter(i => selected.has(i.id))
     setBatchProcessing(true)

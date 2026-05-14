@@ -3,14 +3,13 @@
 import { StyleTag } from '@/types'
 
 const TAGS: { value: StyleTag; label: string; emoji: string }[] = [
-  { value: 'sport',     label: '运动', emoji: '🏃' },
-  { value: 'outdoor',   label: '户外', emoji: '🏕️' },
-  { value: 'menswear',  label: '男装', emoji: '👔' },
-  { value: 'womenswear',label: '女装', emoji: '👗' },
-  { value: 'kids',      label: '儿童', emoji: '🧒' },
-  { value: 'trendy',    label: '潮流', emoji: '🧢' },
-  { value: 'vintage',   label: '复古', emoji: '🎩' },
-  { value: 'workwear',  label: '上班通勤', emoji: '💼' },
+  { value: 'sport',    label: '运动风', emoji: '🏃' },
+  { value: 'outdoor',  label: '户外风', emoji: '🏕️' },
+  { value: 'trendy',   label: '潮流风', emoji: '🧢' },
+  { value: 'casual',   label: '休闲风', emoji: '👕' },
+  { value: 'preppy',   label: '学院风', emoji: '🎓' },
+  { value: 'vintage',  label: '复古风', emoji: '🎩' },
+  { value: 'workwear', label: '通勤风', emoji: '💼' },
 ]
 
 interface Props {

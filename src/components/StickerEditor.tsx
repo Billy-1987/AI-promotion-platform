@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
+import { createPortal } from 'react-dom'
 import { uid } from '@/lib/utils'
 
 export interface Sticker {
@@ -814,8 +815,8 @@ function StickerItem({ sticker, selected, displaySize, onSelect, onUpdate, onCom
 
 type TabId = 'text' | 'shape' | 'emoji'
 const HISTORY_LIMIT = 20
-const DRAWER_HEIGHT = 280
-const DRAWER_HEIGHT_MOBILE = 220
+const DRAWER_HEIGHT = 240
+const DRAWER_HEIGHT_MOBILE = 200
 
 interface PanelText {
   content: string
@@ -877,6 +878,11 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
   const [activeTab, setActiveTab] = useState<TabId>('text')
 
   const [displaySize, setDisplaySize] = useState({ w: 0, h: 0 })
+  // Natural aspect ratio (W/H) of the loaded image — used to give the wrapper an
+  // explicit aspect-ratio so `max-w/max-h` resolve to a real bounded size instead
+  // of the wrapper computing to image's natural pixel dimensions (which would
+  // overflow the canvas and get clipped by overflow-hidden).
+  const [naturalAspect, setNaturalAspect] = useState<number | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const canvasAreaRef = useRef<HTMLDivElement>(null)
@@ -1519,7 +1525,11 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     { id: 'emoji', icon: '✨', label: '图案' },
   ]
 
-  return (
+  // Render via portal to document.body — escapes ancestor backdrop-filter (glass-card)
+  // which would otherwise create a containing block for our `fixed` positioning,
+  // making the modal only cover the right grid column instead of the full viewport.
+  if (typeof document === 'undefined') return null
+  return createPortal(
     <div
       className="fixed top-0 left-0 right-0 z-[9999] bg-zinc-950 flex flex-col select-none overflow-hidden"
       style={{ height: '100dvh' }}
@@ -1573,16 +1583,25 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
         onPointerDown={onCanvasBackdropPointerDown}
       >
         {baseImageUrl ? (
-          <div className="relative max-w-full max-h-full inline-block" onPointerDown={onCanvasBackdropPointerDown}>
+          <div
+            className="relative"
+            style={{
+              aspectRatio: naturalAspect ?? undefined,
+              maxWidth: '100%',
+              maxHeight: '100%',
+            }}
+            onPointerDown={onCanvasBackdropPointerDown}
+          >
             <img
               ref={imgRef}
               src={baseImageUrl}
               alt="base"
               draggable={false}
-              className="block max-w-full max-h-full"
+              className="block w-full h-full"
               style={{ objectFit: 'contain' }}
               onLoad={e => {
                 const img = e.currentTarget
+                setNaturalAspect(img.naturalWidth / img.naturalHeight)
                 setDisplaySize({ w: img.clientWidth, h: img.clientHeight })
               }}
             />
@@ -1717,7 +1736,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       <div
         className="bg-zinc-900 border-t border-zinc-800 overflow-y-auto flex-shrink-0"
         style={{
-          height: `clamp(${DRAWER_HEIGHT_MOBILE}px, 35vh, ${DRAWER_HEIGHT}px)`,
+          height: `clamp(${DRAWER_HEIGHT_MOBILE}px, 28vh, ${DRAWER_HEIGHT}px)`,
           paddingBottom: 'env(safe-area-inset-bottom)',
         }}
       >
@@ -2265,6 +2284,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
         )}
 
       </div>
-    </div>
+    </div>,
+    document.body,
   )
 }

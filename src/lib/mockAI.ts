@@ -1,32 +1,32 @@
 import { StyleTag, Background, GeminiAnalysis, TryOnResult } from '@/types'
 import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
 
-const STYLE_TAGS: StyleTag[] = ['sport', 'outdoor', 'menswear', 'womenswear', 'kids', 'trendy', 'vintage', 'workwear']
+const STYLE_TAGS: StyleTag[] = ['sport', 'outdoor', 'trendy', 'casual', 'preppy', 'vintage', 'workwear']
 
 export const BACKGROUNDS: Background[] = [
   { id: 'bg_sport1',   label: '运动场馆',   url: 'https://picsum.photos/seed/gym001/800/1000',      tags: ['sport'] },
   { id: 'bg_sport2',   label: '跑道赛场',   url: 'https://picsum.photos/seed/track01/800/1000',     tags: ['sport'] },
   { id: 'bg_outdoor1', label: '山野森林',   url: 'https://picsum.photos/seed/forest1/800/1000',     tags: ['outdoor'] },
   { id: 'bg_outdoor2', label: '溪流岩石',   url: 'https://picsum.photos/seed/river01/800/1000',     tags: ['outdoor'] },
-  { id: 'bg_men1',     label: '商务大堂',   url: 'https://picsum.photos/seed/lobby01/800/1000',     tags: ['menswear', 'workwear'] },
-  { id: 'bg_men2',     label: '城市街头',   url: 'https://picsum.photos/seed/city001/800/1000',     tags: ['menswear', 'trendy'] },
-  { id: 'bg_women1',   label: '花园庭院',   url: 'https://picsum.photos/seed/garden1/800/1000',     tags: ['womenswear', 'vintage'] },
-  { id: 'bg_women2',   label: '时尚橱窗',   url: 'https://picsum.photos/seed/window1/800/1000',     tags: ['womenswear', 'trendy'] },
-  { id: 'bg_kids1',    label: '游乐园',     url: 'https://picsum.photos/seed/park001/800/1000',     tags: ['kids'] },
-  { id: 'bg_kids2',    label: '彩色教室',   url: 'https://picsum.photos/seed/class01/800/1000',     tags: ['kids'] },
+  { id: 'bg_men1',     label: '商务大堂',   url: 'https://picsum.photos/seed/lobby01/800/1000',     tags: ['workwear'] },
+  { id: 'bg_men2',     label: '城市街头',   url: 'https://picsum.photos/seed/city001/800/1000',     tags: ['trendy', 'casual'] },
+  { id: 'bg_women1',   label: '花园庭院',   url: 'https://picsum.photos/seed/garden1/800/1000',     tags: ['vintage', 'preppy'] },
+  { id: 'bg_women2',   label: '时尚橱窗',   url: 'https://picsum.photos/seed/window1/800/1000',     tags: ['trendy'] },
+  { id: 'bg_kids1',    label: '游乐园',     url: 'https://picsum.photos/seed/park001/800/1000',     tags: ['casual'] },
+  { id: 'bg_kids2',    label: '彩色教室',   url: 'https://picsum.photos/seed/class01/800/1000',     tags: ['preppy', 'casual'] },
   { id: 'bg_trendy1',  label: '涂鸦街区',   url: 'https://picsum.photos/seed/grfti01/800/1000',     tags: ['trendy'] },
   { id: 'bg_trendy2',  label: '霓虹夜市',   url: 'https://picsum.photos/seed/neon001/800/1000',     tags: ['trendy'] },
   { id: 'bg_vintage1', label: '复古咖啡馆', url: 'https://picsum.photos/seed/cafe001/800/1000',     tags: ['vintage'] },
   { id: 'bg_vintage2', label: '老街弄堂',   url: 'https://picsum.photos/seed/alley01/800/1000',     tags: ['vintage'] },
-  { id: 'bg_work1',    label: '现代办公室', url: 'https://picsum.photos/seed/office1/800/1000',     tags: ['workwear', 'menswear'] },
+  { id: 'bg_work1',    label: '现代办公室', url: 'https://picsum.photos/seed/office1/800/1000',     tags: ['workwear'] },
   { id: 'bg_work2',    label: '会议室',     url: 'https://picsum.photos/seed/meetng1/800/1000',     tags: ['workwear'] },
   // 鞋子专属背景
-  { id: 'bg_shoe1',    label: '木质地板',   url: 'https://picsum.photos/seed/wood001/800/1000',     tags: ['sport', 'trendy'] },
+  { id: 'bg_shoe1',    label: '木质地板',   url: 'https://picsum.photos/seed/wood001/800/1000',     tags: ['casual', 'preppy'] },
   { id: 'bg_shoe2',    label: '户外草地',   url: 'https://picsum.photos/seed/grass01/800/1000',     tags: ['outdoor', 'sport'] },
-  { id: 'bg_shoe3',    label: '城市街道',   url: 'https://picsum.photos/seed/street1/800/1000',     tags: ['trendy', 'menswear'] },
-  { id: 'bg_shoe4',    label: '简约白台',   url: 'https://picsum.photos/seed/white01/800/1000',     tags: ['womenswear', 'workwear'] },
+  { id: 'bg_shoe3',    label: '城市街道',   url: 'https://picsum.photos/seed/street1/800/1000',     tags: ['trendy', 'casual'] },
+  { id: 'bg_shoe4',    label: '简约白台',   url: 'https://picsum.photos/seed/white01/800/1000',     tags: ['workwear', 'preppy'] },
   { id: 'bg_shoe5',    label: '石板路面',   url: 'https://picsum.photos/seed/stone01/800/1000',     tags: ['vintage', 'outdoor'] },
-  { id: 'bg_shoe6',    label: '运动场地',   url: 'https://picsum.photos/seed/court01/800/1000',     tags: ['sport', 'kids'] },
+  { id: 'bg_shoe6',    label: '运动场地',   url: 'https://picsum.photos/seed/court01/800/1000',     tags: ['sport'] },
 ]
 
 // 鞋子专属背景 ID 列表
@@ -57,7 +57,7 @@ export async function analyzeClothing(file: File): Promise<GeminiAnalysis> {
     throw new Error(`Analysis failed (${res.status}): ${errBody.slice(0, 200)}`)
   }
   const data = await res.json()
-  if (!STYLE_TAGS.includes(data.style)) data.style = 'womenswear'
+  if (!STYLE_TAGS.includes(data.style)) data.style = 'casual'
   if (!data.productCategory) data.productCategory = 'clothing'
   return data as GeminiAnalysis
 }
@@ -71,6 +71,7 @@ export async function generateTryOn(
   skipAnalyze?: boolean,
   modelGender?: string,
   aspectRatio?: string,
+  modelAge?: string,
 ): Promise<TryOnResult> {
   const log = makeLogger('tryon-client')
   const t0 = Date.now()
@@ -88,6 +89,7 @@ export async function generateTryOn(
     productCategory: productCategory ?? undefined,
     skipAnalyze: skipAnalyze ?? (style != null && productCategory != null),
     modelGender: modelGender ?? 'female',
+    modelAge: modelAge ?? 'young',
     aspectRatio: aspectRatio ?? '3:4',
   }
   log.info('sending — payload size:', formatBytes(estimateJsonSize(payload)), 'clothingB64chars:', clothingBase64?.length ?? 0, 'modelB64chars:', modelBase64?.length ?? 0)

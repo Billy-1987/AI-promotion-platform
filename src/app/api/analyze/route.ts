@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
             type: 'text',
             text: `分析这张商品图片，返回 JSON 格式（不要 markdown 代码块，只返回纯 JSON）：
 {
-  "style": "sport|outdoor|menswear|womenswear|kids|trendy|vintage|workwear",
+  "style": "sport|outdoor|trendy|casual|preppy|vintage|workwear",
   "colors": ["主色1", "主色2"],
   "category": "上衣|裤子|裙子|外套|连衣裙|套装|运动服|童装|鞋子|运动鞋|皮鞋|靴子|凉鞋|拖鞋",
   "productCategory": "shoes|clothing",
@@ -48,7 +48,7 @@ export async function POST(req: NextRequest) {
   "productDescription": "用50字以内写一段吸引买家的商品描述"
 }
 productCategory 判断规则：图片主体是鞋子（运动鞋/皮鞋/靴子/凉鞋/拖鞋等任何鞋类）则返回 "shoes"，否则返回 "clothing"。
-style 枚举说明：sport=运动，outdoor=户外，menswear=男装，womenswear=女装，kids=儿童，trendy=潮流，vintage=复古，workwear=上班通勤`,
+style 枚举说明：sport=运动风，outdoor=户外风，trendy=潮流风，casual=休闲风，preppy=学院风，vintage=复古风，workwear=通勤风`,
           },
         ],
       },

@@ -9,14 +9,38 @@ type ChatContentPart =
   | { type: 'image_url'; image_url: { url: string } }
 
 const STYLE_LABELS: Record<string, string> = {
-  sport: 'sportswear', outdoor: 'outdoor', menswear: "men's fashion",
-  womenswear: "women's fashion", kids: "children's fashion",
-  trendy: 'streetwear trendy', vintage: 'vintage retro', workwear: 'business workwear',
+  sport:    'athletic sportswear',
+  outdoor:  'adventurous outdoor',
+  trendy:   'fashion-forward streetwear',
+  casual:   'relaxed casual everyday',
+  preppy:   'preppy/Ivy League college',
+  vintage:  'vintage retro',
+  workwear: 'business professional',
 }
 
 const STYLE_ZH: Record<string, string> = {
-  sport: '运动', outdoor: '户外', menswear: '男装', womenswear: '女装',
-  kids: '儿童', trendy: '潮流', vintage: '复古', workwear: '上班通勤',
+  sport: '运动风', outdoor: '户外风', trendy: '潮流风', casual: '休闲风',
+  preppy: '学院风', vintage: '复古风', workwear: '通勤风',
+}
+
+const AGE_DESC: Record<string, string> = {
+  baby:   'infant/toddler (age 1-3)',
+  child:  'child (age 4-10)',
+  teen:   'teenager (age 13-17)',
+  young:  'young adult (age 22-30)',
+  middle: 'middle-aged adult (age 38-50)',
+  senior: 'senior adult (age 60-72)',
+}
+
+// Compose model description from gender + age + style
+function describeModel(gender: string, age: string, style: string): string {
+  const isChildish = age === 'baby' || age === 'child'
+  const genderWord = gender === 'male'
+    ? (isChildish ? 'boy' : 'man')
+    : (isChildish ? 'girl' : 'woman')
+  const ageDesc = AGE_DESC[age] ?? AGE_DESC.young
+  const styleLabel = STYLE_LABELS[style] ?? 'casual everyday'
+  return `a Caucasian ${genderWord} model, ${ageDesc}, ${styleLabel} look, natural confident pose, professional fashion photography`
 }
 
 const BG_SCENES: Record<string, string> = {
@@ -42,39 +66,6 @@ const BG_SCENES: Record<string, string> = {
   bg_shoe4:   'a clean white minimalist studio surface, soft diffused lighting, pure product photography setup',
   bg_shoe5:   'a rustic cobblestone stone pavement path, warm afternoon sunlight, vintage outdoor atmosphere',
   bg_shoe6:   'an outdoor sports court with court markings, bright natural sunlight, athletic environment',
-}
-
-const MODEL_BY_GENDER: Record<string, Record<string, string>> = {
-  female: {
-    sport:     'a fit athletic young European female model (age 22-28), energetic sporty pose',
-    outdoor:   'a sporty young Caucasian female model (age 22-28), adventurous outdoor look',
-    menswear:  'a stylish young European female model (age 22-28), confident pose',
-    womenswear:'a beautiful young European female model (age 22-28), slender figure, sweet charming smile',
-    kids:      'a cute Western girl child model (age 6-12)',
-    trendy:    'a cool young Caucasian female streetwear model (age 20-26), urban attitude',
-    vintage:   'a stylish young European female model (age 22-28), vintage charm, warm smile',
-    workwear:  'a polished young Caucasian professional female model (age 25-32), confident business look',
-  },
-  male: {
-    sport:     'a fit athletic young Caucasian male model (age 22-28), energetic sporty pose',
-    outdoor:   'a handsome young Caucasian male model (age 22-28), adventurous outdoor look',
-    menswear:  'a handsome young Caucasian male model (age 22-28), sharp jawline, confident smile, athletic build',
-    womenswear:'a handsome young Caucasian male model (age 22-28), confident pose',
-    kids:      'a cute Western boy child model (age 6-12)',
-    trendy:    'a cool young Caucasian male streetwear model (age 20-26), urban attitude',
-    vintage:   'a stylish young European male model (age 22-28), vintage charm, warm smile',
-    workwear:  'a polished young Caucasian professional male model (age 25-32), confident business look',
-  },
-  kids: {
-    sport:     'a cute Western child model (age 6-10), energetic playful pose',
-    outdoor:   'a cute Western child model (age 6-10), adventurous outdoor look',
-    menswear:  'a cute Western boy child model (age 6-12)',
-    womenswear:'a cute Western girl child model (age 6-12)',
-    kids:      'a cute Western child model (age 4-10)',
-    trendy:    'a cute Western child model (age 8-12), stylish urban look',
-    vintage:   'a cute Western child model (age 6-12), vintage charm',
-    workwear:  'a cute Western child model (age 8-12)',
-  },
 }
 
 // ── Step 1: extract clothing description via vision model ─────────────────────
@@ -134,7 +125,7 @@ async function generateFromImageRef(
 }
 
 const ANALYZE_PROMPT = `Analyze this product image. Return pure JSON only (no markdown):
-{"style":"sport|outdoor|menswear|womenswear|kids|trendy|vintage|workwear","productCategory":"shoes|clothing","colors":["color1"],"keywords":["kw1"]}`
+{"style":"sport|outdoor|trendy|casual|preppy|vintage|workwear","productCategory":"shoes|clothing","colors":["color1"],"keywords":["kw1"]}`
 
 export async function POST(req: NextRequest) {
   const log = makeLogger('tryon')
@@ -155,6 +146,7 @@ export async function POST(req: NextRequest) {
     style: inputStyle, backgroundId,
     productCategory: inputCategory, skipAnalyze,
     modelGender = 'female',
+    modelAge = 'young',
     aspectRatio = '3:4',
   } = body as {
     clothingBase64?: string
@@ -164,6 +156,7 @@ export async function POST(req: NextRequest) {
     productCategory?: 'clothing' | 'shoes'
     skipAnalyze?: boolean
     modelGender?: string
+    modelAge?: string
     aspectRatio?: string
   }
   log.info('parsed body — clothingBase64Bytes:', formatBytes(clothingBase64?.length ?? 0), 'mime:', clothingMime, 'style:', inputStyle, 'bg:', backgroundId, 'category:', inputCategory)
@@ -175,14 +168,13 @@ export async function POST(req: NextRequest) {
 
   const mime = clothingMime ?? 'image/jpeg'
   const isShoes = inputCategory === 'shoes'
-  const styleKey = inputStyle ?? 'womenswear'
-  const styleLabel = STYLE_LABELS[styleKey] ?? 'fashion'
-  const styleZhLabel = STYLE_ZH[styleKey] ?? '时尚'
+  const styleKey = inputStyle ?? 'casual'
+  const styleLabel = STYLE_LABELS[styleKey] ?? 'casual everyday'
+  const styleZhLabel = STYLE_ZH[styleKey] ?? '休闲风'
   const bgScene = (backgroundId && BG_SCENES[backgroundId]) ?? 'a clean studio with soft white lighting'
-  const modelDesc = (MODEL_BY_GENDER[modelGender] ?? MODEL_BY_GENDER.female)[styleKey]
-    ?? MODEL_BY_GENDER.female.womenswear
+  const modelDesc = describeModel(modelGender, modelAge, styleKey)
 
-  log.info('start AI calls — style:', styleKey, 'shoes:', isShoes, 'gender:', modelGender, 'ratio:', aspectRatio)
+  log.info('start AI calls — style:', styleKey, 'shoes:', isShoes, 'gender:', modelGender, 'age:', modelAge, 'ratio:', aspectRatio)
 
   // ── Run all three in parallel: describe, analyze, text-analysis ───────────
   const [clothingDesc, analyzeRes, textRes] = await Promise.all([

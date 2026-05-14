@@ -400,11 +400,22 @@ function WeekCard({ entry, currentWeek, onBrandClick, onRecommendClick, hasRecom
 }) {
   return (
     <div className="flex flex-col md:flex-row md:gap-3 md:items-start gap-1">
-      {/* 当前周标签 — mobile: 卡片上方一行 badge / desktop: 左侧列 */}
+      {/* Desktop: 始终占 80px 占位列保证卡片左对齐；mobile: 隐藏，badge 走下面那块 */}
+      <div className="hidden md:flex md:w-20 md:shrink-0 md:pt-3 md:flex-col items-center md:gap-1.5">
+        {currentWeek && (
+          <>
+            <span className="text-sm text-slate-500 font-medium">当前</span>
+            <span className="px-3 py-1.5 border text-base font-bold rounded-xl text-center" style={{ background: 'rgba(252,234,66,0.15)', borderColor: 'rgba(252,234,66,0.5)', color: '#b45309' }}>
+              {currentWeek}
+            </span>
+          </>
+        )}
+      </div>
+      {/* Mobile: 卡片上方 inline badge */}
       {currentWeek && (
-        <div className="md:w-20 md:shrink-0 md:pt-3 flex md:flex-col items-center gap-2 md:gap-1.5">
-          <span className="text-xs md:text-sm text-slate-500 font-medium">当前</span>
-          <span className="px-2.5 md:px-3 py-1 md:py-1.5 border text-sm md:text-base font-bold rounded-lg md:rounded-xl text-center" style={{ background: 'rgba(252,234,66,0.15)', borderColor: 'rgba(252,234,66,0.5)', color: '#b45309' }}>
+        <div className="md:hidden flex items-center gap-2">
+          <span className="text-xs text-slate-500 font-medium">当前</span>
+          <span className="px-2.5 py-1 border text-sm font-bold rounded-lg text-center" style={{ background: 'rgba(252,234,66,0.15)', borderColor: 'rgba(252,234,66,0.5)', color: '#b45309' }}>
             {currentWeek}
           </span>
         </div>

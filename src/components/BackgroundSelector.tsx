@@ -16,17 +16,18 @@ export default function BackgroundSelector({ selectedId, suggestedOrder, onSelec
   return (
     <div className="mt-4">
       <p className="text-xs text-slate-500 mb-2">选择背景</p>
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-3 sm:grid-cols-4 gap-2">
         {ordered.map(bg => (
           <button
             key={bg.id}
             onClick={() => onSelect(bg.id)}
-            className={`px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${
+            className={`px-2 sm:px-3 py-2 sm:py-2.5 rounded-lg text-xs sm:text-sm font-medium transition-all whitespace-nowrap overflow-hidden text-ellipsis ${
               selectedId === bg.id
                 ? 'text-white ring-2'
                 : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 hover:text-slate-800'
             }`}
             style={selectedId === bg.id ? { background: '#0034cc', boxShadow: '0 0 0 2px rgba(0,52,204,0.3)' } : {}}
+            title={bg.label}
           >
             {bg.label}
           </button>
