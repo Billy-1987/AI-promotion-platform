@@ -49,6 +49,8 @@ function CalendarContent() {
   const { user, logout } = useAuth()
   const [meta, setMeta] = useState<CalendarMeta | null>(null)
   const [uploading, setUploading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [uploadPhase, setUploadPhase] = useState<'uploading' | 'parsing'>('uploading')
   const [uploadMsg, setUploadMsg] = useState('')
   const [dragging, setDragging] = useState(false)
   const [selectedBrand, setSelectedBrand] = useState<string | null>(null)
@@ -93,17 +95,44 @@ function CalendarContent() {
       return
     }
     setUploading(true)
+    setUploadProgress(0)
+    setUploadPhase('uploading')
     setUploadMsg('')
-    const fd = new FormData()
-    fd.append('file', file)
-    const res = await fetch('/api/calendar', { method: 'POST', body: fd })
-    if (res.ok) {
+
+    try {
+      // Use XHR (not fetch) to get upload.onprogress events
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        const fd = new FormData()
+        fd.append('file', file)
+        xhr.open('POST', '/api/calendar')
+        xhr.upload.onprogress = e => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100))
+          }
+        }
+        xhr.upload.onload = () => {
+          // Bytes are all uploaded — switch to parsing phase
+          setUploadProgress(100)
+          setUploadPhase('parsing')
+        }
+        xhr.onload = () => {
+          if (xhr.status >= 200 && xhr.status < 300) resolve()
+          else reject(new Error(`HTTP ${xhr.status}`))
+        }
+        xhr.onerror = () => reject(new Error('网络错误'))
+        xhr.onabort = () => reject(new Error('上传已取消'))
+        xhr.send(fd)
+      })
       setUploadMsg('✓ 上传成功')
       await fetchMeta()
-    } else {
-      setUploadMsg('上传失败，请重试')
+    } catch (e) {
+      setUploadMsg(`上传失败：${(e as Error).message}`)
+    } finally {
+      setUploading(false)
+      setUploadProgress(0)
+      setUploadPhase('uploading')
     }
-    setUploading(false)
   }
 
   function handleFileInput(e: React.ChangeEvent<HTMLInputElement>) {
@@ -211,11 +240,22 @@ function CalendarContent() {
                         style={{ background: dragging ? '#0045ff' : '#0034cc' }}
                       >
                         {uploading
-                          ? <><span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />上传中...</>
+                          ? <>
+                              <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                              {uploadPhase === 'uploading' ? `上传中 ${uploadProgress}%` : '解析中...'}
+                            </>
                           : <>⬆ 上传运营日历</>}
                       </button>
                     </div>
-                    {uploadMsg && (
+                    {uploading && (
+                      <div className="w-28 h-1.5 bg-slate-200 rounded-full overflow-hidden flex-shrink-0">
+                        <div
+                          className={`h-full rounded-full transition-[width] duration-200 ease-out ${uploadPhase === 'parsing' ? 'animate-pulse' : ''}`}
+                          style={{ width: `${uploadProgress}%`, background: '#0034cc' }}
+                        />
+                      </div>
+                    )}
+                    {!uploading && uploadMsg && (
                       <span className={`text-sm ${uploadMsg.startsWith('✓') ? 'text-emerald-600' : 'text-red-500'} truncate`}>
                         {uploadMsg}
                       </span>
@@ -251,9 +291,27 @@ function CalendarContent() {
                       }`}
                     >
                       {uploading ? (
-                        <div className="flex flex-col items-center gap-3">
+                        <div className="flex flex-col items-center gap-3 w-full max-w-xs mx-auto">
                           <span className="w-8 h-8 border-2 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#0034cc', borderTopColor: 'transparent' }} />
-                          <p className="text-slate-700 text-sm">正在解析文件...</p>
+                          <div className="w-full">
+                            <div className="flex items-baseline justify-between mb-1.5">
+                              <p className="text-slate-700 text-sm font-medium">
+                                {uploadPhase === 'uploading' ? '上传中...' : '解析中...'}
+                              </p>
+                              <p className="text-base font-semibold tabular-nums" style={{ color: '#0034cc' }}>
+                                {uploadPhase === 'uploading' ? `${uploadProgress}%` : '...'}
+                              </p>
+                            </div>
+                            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                              <div
+                                className={`h-full rounded-full transition-[width] duration-200 ease-out ${uploadPhase === 'parsing' ? 'animate-pulse' : ''}`}
+                                style={{ width: `${uploadProgress}%`, background: '#0034cc' }}
+                              />
+                            </div>
+                            <p className="text-xs text-slate-400 mt-1.5 text-left">
+                              {uploadPhase === 'uploading' ? '文件传输中' : '服务器正在解析 Excel，请稍候'}
+                            </p>
+                          </div>
                         </div>
                       ) : (
                         <>
