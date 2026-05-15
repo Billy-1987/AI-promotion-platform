@@ -407,10 +407,7 @@ function GalleryContent() {
         const composited = await compositeWithLogo(fullDataUrl, '/bigoffs-logo.png', pos)
         const newFilename = item.filename.replace(/\.(jpg|jpeg|png)$/i, '') + '-BIGOFFS.jpg'
         await saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source }, user?.username)
-        const a = document.createElement('a')
-        a.href = composited
-        a.download = newFilename
-        a.click()
+        // 不自动下载——只入库，用户可去图库里逐张下载或后续手动批量保存
       } catch (e) {
         console.error('Batch logo failed for', item.id, e)
       }

@@ -44,6 +44,26 @@ export default function PreviewPanel({
   const processingText = isShoes ? 'AI 正在生成鞋子场景图...' : 'AI 正在生成换装效果...'
   const titleText = isShoes ? '场景展示预览' : '换装效果预览'
 
+  // Simulated progress for try-on generation (no real progress events from upstream)
+  // 0-20s: linear to 50%; 20-50s: exponential easing to ~93%; cap at 95%.
+  const [progress, setProgress] = useState(0)
+  useEffect(() => {
+    if (status !== 'processing') {
+      setProgress(0)
+      return
+    }
+    const start = Date.now()
+    setProgress(1)
+    const interval = setInterval(() => {
+      const t = (Date.now() - start) / 1000
+      const p = t <= 20
+        ? (t / 20) * 50
+        : Math.min(95, 50 + (1 - Math.exp(-(t - 20) / 10)) * 45)
+      setProgress(Math.max(1, Math.floor(p)))
+    }, 200)
+    return () => clearInterval(interval)
+  }, [status])
+
   // Logo 浮层状态 — 两个独立槽位：BigOffs 右上 + 合作品牌左上，可同时存在
   type LogoData = { srcUrl: string; pos: { x: number; y: number }; scale: number; aspect: number }
   type LogoSlot = 'bigoffs' | 'partner'
@@ -302,9 +322,21 @@ export default function PreviewPanel({
         {status === 'processing' && (
           <>
             {bg && <Image src={bg.url} alt="Background" fill className="object-cover opacity-40" sizes="600px" />}
-            <div className="relative z-10 flex flex-col items-center gap-3">
+            <div className="relative z-10 flex flex-col items-center gap-4 w-full max-w-xs px-6">
               <div className="w-12 h-12 border-4 border-t-transparent rounded-full animate-spin" style={{ borderColor: '#0034cc', borderTopColor: 'transparent' }} />
-              <p className="text-slate-600 text-sm">{processingText}</p>
+              <div className="w-full">
+                <div className="flex items-baseline justify-between mb-1.5">
+                  <p className="text-slate-600 text-sm">{processingText}</p>
+                  <p className="text-base font-semibold tabular-nums" style={{ color: '#0034cc' }}>{progress}%</p>
+                </div>
+                <div className="w-full h-2 bg-white/70 rounded-full overflow-hidden shadow-inner">
+                  <div
+                    className="h-full rounded-full transition-[width] duration-200 ease-out"
+                    style={{ width: `${progress}%`, background: '#0034cc' }}
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-slate-500">通常需要 20-50 秒</p>
             </div>
           </>
         )}

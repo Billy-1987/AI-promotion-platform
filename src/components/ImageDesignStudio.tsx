@@ -161,8 +161,16 @@ export default function ImageDesignStudio() {
   const [refDragOver, setRefDragOver] = useState(false)
   const refInputRef = useRef<HTMLInputElement>(null)
 
+  // 参考图智能分析：环境光影 / 穿着动作 / 滤镜构图
+  type RefAnalysis = { lighting: string; pose: string; composition: string }
+  const [refAnalysis, setRefAnalysis] = useState<RefAnalysis | null>(null)
+  const [analyzingRef, setAnalyzingRef] = useState(false)
+  // 缓存：base64 → 分析结果，避免重复调用
+  const refAnalysisCacheRef = useRef<Map<string, RefAnalysis>>(new Map())
+
   // Generation state
   const [generating, setGenerating] = useState(false)
+  const [progress, setProgress] = useState(0)
   const [images, setImages] = useState<GeneratedImage[]>([])
   const [error, setError] = useState<string | null>(null)
   const [selectedImage, setSelectedImage] = useState<string | null>(null)
@@ -177,6 +185,62 @@ export default function ImageDesignStudio() {
   // History
   const [history, setHistory] = useState<HistoryItem[]>([])
   useEffect(() => { setHistory(loadHistory()) }, [])
+
+  // Simulated progress for image generation (no real progress events from upstream)
+  // 0-20s: linear to 50%; 20-50s: exponential easing to ~93%; cap at 95%.
+  useEffect(() => {
+    if (!generating) {
+      setProgress(0)
+      return
+    }
+    const start = Date.now()
+    setProgress(1)
+    const interval = setInterval(() => {
+      const t = (Date.now() - start) / 1000
+      const p = t <= 20
+        ? (t / 20) * 50
+        : Math.min(95, 50 + (1 - Math.exp(-(t - 20) / 10)) * 45)
+      setProgress(Math.max(1, Math.floor(p)))
+    }, 200)
+    return () => clearInterval(interval)
+  }, [generating])
+
+  // 自动分析最新加入的参考图（缓存命中则瞬间填入）
+  useEffect(() => {
+    if (refImages.length === 0) {
+      setRefAnalysis(null)
+      return
+    }
+    const latest = refImages[refImages.length - 1]
+    const cached = refAnalysisCacheRef.current.get(latest.base64)
+    if (cached) {
+      setRefAnalysis(cached)
+      return
+    }
+    let cancelled = false
+    setAnalyzingRef(true)
+    ;(async () => {
+      try {
+        const res = await fetch('/api/image-design/analyze-ref', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ imageBase64: latest.base64, mimeType: latest.mime }),
+        })
+        if (!res.ok) throw new Error(`HTTP ${res.status}`)
+        const data = await res.json() as RefAnalysis
+        if (cancelled) return
+        refAnalysisCacheRef.current.set(latest.base64, data)
+        setRefAnalysis(data)
+      } catch (e) {
+        console.warn('[ref-analyze] failed:', (e as Error)?.message)
+        if (!cancelled) setRefAnalysis(null)
+      } finally {
+        if (!cancelled) setAnalyzingRef(false)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [refImages])
+
 
   // Logo state — two independent slots: BigOffs (top-right) + partner brand (top-left)
   type LogoData = { srcUrl: string; pos: { x: number; y: number }; scale: number; aspect: number }
@@ -784,22 +848,39 @@ export default function ImageDesignStudio() {
             />
             <div className="mt-2 flex flex-wrap gap-1.5">
               {[
-                { label: '🌅 环境光影', hint: '黄金时段阳光、霓虹夜景、柔和室内光' },
-                { label: '👗 穿着动作', hint: '模特全身正面站立、侧身回眸、动感跑步' },
-                { label: '🎨 滤镜构图', hint: '胶片质感、三分构图、浅景深虚化背景' },
-              ].map(d => (
-                <button
-                  key={d.label}
-                  type="button"
-                  title={d.hint}
-                  onClick={() => setPrompt(p => p ? `${p}，${d.hint}` : d.hint)}
-                  className="px-2 py-1 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded-lg transition-colors border border-blue-200"
-                >
-                  {d.label}
-                </button>
-              ))}
+                { key: 'lighting' as const,    label: '🌅 环境光影', fallback: '黄金时段阳光、霓虹夜景、柔和室内光' },
+                { key: 'pose' as const,        label: '👗 穿着动作', fallback: '模特全身正面站立、侧身回眸、动感跑步' },
+                { key: 'composition' as const, label: '🎨 滤镜构图', fallback: '胶片质感、三分构图、浅景深虚化背景' },
+              ].map(d => {
+                const aiText = refAnalysis?.[d.key]
+                const text = aiText && aiText.length > 0 ? aiText : d.fallback
+                const fromAi = !!(aiText && aiText.length > 0)
+                return (
+                  <button
+                    key={d.label}
+                    type="button"
+                    title={analyzingRef ? '正在分析参考图…' : (fromAi ? `AI 分析：${text}` : text)}
+                    onClick={() => setPrompt(p => p ? `${p}，${text}` : text)}
+                    className={`px-2 py-1 text-xs rounded-lg transition-colors border flex items-center gap-1 ${
+                      fromAi
+                        ? 'bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200'
+                        : 'bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200'
+                    }`}
+                  >
+                    {analyzingRef && <span className="inline-block w-2.5 h-2.5 border border-current border-t-transparent rounded-full animate-spin" />}
+                    {d.label}
+                    {fromAi && <span className="text-[10px] opacity-70">✨</span>}
+                  </button>
+                )
+              })}
             </div>
-            <p className="text-xs text-slate-400 mt-1.5">点击维度标签可快速追加描述词</p>
+            <p className="text-xs text-slate-400 mt-1.5">
+              {analyzingRef
+                ? '正在分析参考图特征…'
+                : refAnalysis
+                  ? '✨ 已识别参考图特征，点击标签追加专属描述'
+                  : '点击维度标签可快速追加描述词；上传参考图后会智能识别'}
+            </p>
           </div>
 
           {/* Style */}
@@ -900,13 +981,24 @@ export default function ImageDesignStudio() {
           {/* Main preview */}
           <div className="glass-card rounded-2xl flex-1 min-h-[50vh] md:min-h-0 overflow-hidden relative flex items-center justify-center p-3">
             {generating ? (
-              <div className="flex flex-col items-center gap-4 text-slate-500">
+              <div className="flex flex-col items-center gap-4 text-slate-500 w-full max-w-xs px-6">
                 <div className="relative w-16 h-16">
                   <div className="absolute inset-0 rounded-full border-4 border-slate-200" />
                   <div className="absolute inset-0 rounded-full border-4 border-t-transparent animate-spin" style={{ borderColor: '#0034cc', borderTopColor: 'transparent' }} />
                 </div>
-                <p className="text-sm">AI 正在创作中，请稍候...</p>
-                <p className="text-xs text-slate-400">通常需要 15-30 秒</p>
+                <div className="w-full">
+                  <div className="flex items-baseline justify-between mb-1.5">
+                    <p className="text-sm">AI 正在创作中...</p>
+                    <p className="text-base font-semibold tabular-nums" style={{ color: '#0034cc' }}>{progress}%</p>
+                  </div>
+                  <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-200 ease-out"
+                      style={{ width: `${progress}%`, background: '#0034cc' }}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400">通常需要 20-50 秒</p>
               </div>
             ) : selectedImage ? (
               <div
