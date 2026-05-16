@@ -8,6 +8,7 @@ import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
 import { GalleryItem, getGallery, getGalleryItem, deleteFromGallery, saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import { APP_VERSION } from '@/lib/version'
+import { drawImageCrisp } from '@/lib/canvas'
 
 const ROLE_LABEL: Record<string, string> = { hq: '总部市场部', regional: '区域运营' }
 
@@ -32,6 +33,15 @@ function loadImg(src: string): Promise<HTMLImageElement> {
   })
 }
 
+// 判定是不是「触屏为主、无 hover」的移动设备（手机 / 平板）。桌面浏览器即便
+// `navigator.canShare({ files })` 返回 true，调用 share 会弹 macOS 系统分享面板
+// 而非"下载到 Downloads"，对桌面用户是负向体验；所以只在真·移动设备上才走
+// Web Share，桌面一律直接下载 / 打 ZIP。
+function isTouchOnlyDevice(): boolean {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return false
+  return window.matchMedia('(pointer: coarse) and (hover: none)').matches
+}
+
 async function compositeWithLogo(
   dataUrl: string,
   logoSrc: string,
@@ -47,8 +57,10 @@ async function compositeWithLogo(
   ctx.drawImage(poster, 0, 0)
   const logoW = poster.naturalWidth * pos.scale
   const logoH = (logo.naturalHeight / logo.naturalWidth) * logoW
-  ctx.drawImage(logo, poster.naturalWidth * pos.x - logoW / 2, poster.naturalHeight * pos.y - logoH / 2, logoW, logoH)
-  return canvas.toDataURL('image/jpeg', 0.95)
+  // 多级降采样保证 logo 边缘锐利 —— 见 src/lib/canvas.ts
+  drawImageCrisp(ctx, logo, poster.naturalWidth * pos.x - logoW / 2, poster.naturalHeight * pos.y - logoH / 2, logoW, logoH)
+  // PNG 输出 —— 保留 logo 边缘锐利度（JPEG 量化会让 logo 轮廓产生像素感）。
+  return canvas.toDataURL('image/png')
 }
 
 // ─── 单张卡片 ─────────────────────────────────────────────────────────────────
@@ -295,17 +307,72 @@ function BatchLogoModal({
 }
 
 // ─── 预览弹窗 ─────────────────────────────────────────────────────────────────
-function PreviewModal({ item, onClose }: { item: GalleryItem; onClose: () => void }) {
+function PreviewModal({
+  item,
+  saved,
+  onSaved,
+  onClose,
+}: {
+  item: GalleryItem
+  saved: boolean
+  onSaved: () => void
+  onClose: () => void
+}) {
   // item.dataUrl may already be loaded by GalleryCard; use it directly
   const dataUrl = item.dataUrl
+  const [saving, setSaving] = useState(false)
 
-  function handleDownload() {
-    if (!dataUrl) return
-    const a = document.createElement('a')
-    a.href = dataUrl
-    a.download = item.filename
-    a.click()
+  // 单图保存 — 与 handleBatchSave 一致的混合方案：先试 navigator.share，
+  // 不支持 / 用户未在分享面板取消时再降级到原生 `<a download>`. 这样 iOS Safari
+  // 下点击「保存」会弹系统分享面板（可一键存到「照片」），而不是把图片在新标签里打开。
+  async function handleSave() {
+    if (!dataUrl || saving) return
+    setSaving(true)
+    try {
+      const blob = await (await fetch(dataUrl)).blob()
+      const mimeMatch = dataUrl.match(/^data:([^;]+);/)
+      const mime = mimeMatch?.[1] ?? blob.type ?? 'application/octet-stream'
+      const file = new File([blob], item.filename, { type: mime })
+
+      const nav = typeof navigator !== 'undefined' ? navigator : null
+      // 仅在触屏移动设备上调 share —— 桌面 Safari/Chrome 即便 canShare===true
+      // 也会弹系统分享面板，桌面用户其实想要"下载到 Downloads"
+      const canUseShare = isTouchOnlyDevice()
+        && !!(nav?.share && nav?.canShare && nav.canShare({ files: [file] }))
+
+      if (canUseShare) {
+        try {
+          await nav!.share({ files: [file], title: item.filename })
+          onSaved()
+          return
+        } catch (e) {
+          if ((e as Error)?.name === 'AbortError') return
+          // 其它错误：落到下载兜底
+          console.warn('navigator.share failed for single image, falling back to download:', e)
+        }
+      }
+
+      const url = URL.createObjectURL(file)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = item.filename
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+      onSaved()
+    } catch (e) {
+      console.error('Save failed', e)
+      alert('保存失败，请重试')
+    } finally {
+      setSaving(false)
+    }
   }
+
+  // 已保存 → 绿色按钮 + ✓；保存中 → 灰色禁用 + loading；其它 → 主色蓝
+  const saveBtnStyle: React.CSSProperties = saved
+    ? { background: '#10b981' }
+    : { background: '#0034cc' }
+  const saveBtnLabel = saving ? '保存中...' : saved ? '✓ 已保存' : '保存'
+
   return (
     <div className="fixed inset-0 bg-black/85 flex items-center justify-center z-50 p-4" onClick={onClose}>
       <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
@@ -323,7 +390,15 @@ function PreviewModal({ item, onClose }: { item: GalleryItem; onClose: () => voi
           }
         </div>
         <div className="flex gap-3 px-6 py-4 border-t border-slate-200 shrink-0">
-          <button onClick={handleDownload} disabled={!dataUrl} className="flex-1 py-2.5 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40" style={{ background: '#0034cc' }}>下载</button>
+          <button
+            onClick={handleSave}
+            disabled={!dataUrl || saving}
+            className="flex-1 py-2.5 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+            style={saveBtnStyle}
+          >
+            {saving && <span className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+            {saveBtnLabel}
+          </button>
           <button onClick={onClose} className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-sm font-medium rounded-lg transition-colors">关闭</button>
         </div>
       </div>
@@ -442,7 +517,9 @@ function GalleryContent() {
     })
 
     const nav = typeof navigator !== 'undefined' ? navigator : null
-    const canUseShare = !!(nav?.share && nav?.canShare && nav.canShare({ files }))
+    // 同 PreviewModal.handleSave：仅触屏设备走 share，桌面直接 ZIP / 单文件下载
+    const canUseShare = isTouchOnlyDevice()
+      && !!(nav?.share && nav?.canShare && nav.canShare({ files }))
 
     if (canUseShare) {
       try {
@@ -511,7 +588,8 @@ function GalleryContent() {
         const fullDataUrl = await getGalleryItem(item.id)
         if (!fullDataUrl) continue
         const composited = await compositeWithLogo(fullDataUrl, '/bigoffs-logo.png', pos)
-        const newFilename = item.filename.replace(/\.(jpg|jpeg|png)$/i, '') + '-BIGOFFS.jpg'
+        // compositeWithLogo 现在输出 PNG，扩展名跟着改
+        const newFilename = item.filename.replace(/\.(jpg|jpeg|png)$/i, '') + '-BIGOFFS.png'
         await saveToGallery({ dataUrl: composited, filename: newFilename, source: item.source }, user?.username)
         // 不自动下载——只入库，用户可去图库里逐张下载或后续手动批量保存
       } catch (e) {
@@ -678,7 +756,18 @@ function GalleryContent() {
       </main>
 
       {/* 弹窗 */}
-      {preview && <PreviewModal item={preview} onClose={() => setPreview(null)} />}
+      {preview && (
+        <PreviewModal
+          item={preview}
+          saved={savedIds.has(preview.id)}
+          onSaved={() => setSavedIds(prev => {
+            const next = new Set(prev)
+            next.add(preview.id)
+            return next
+          })}
+          onClose={() => setPreview(null)}
+        />
+      )}
       {showBatchLogo && (
         <BatchLogoModal
           count={selectedCount}

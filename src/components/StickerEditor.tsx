@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import { createPortal } from 'react-dom'
 import { uid } from '@/lib/utils'
+import { drawImageCrisp } from '@/lib/canvas'
 
 export interface Sticker {
   id: string
@@ -1277,6 +1278,9 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       const ctx = canvas.getContext('2d')!
       canvas.width = base.naturalWidth
       canvas.height = base.naturalHeight
+      // 启用高质量插值 —— 缩放 logo / shape 时显著减少锯齿。
+      ctx.imageSmoothingEnabled = true
+      ctx.imageSmoothingQuality = 'high'
       ctx.drawImage(base, 0, 0)
 
       const short = Math.min(canvas.width, canvas.height)
@@ -1506,7 +1510,8 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
             const logoImg = await loadImg(s.url)
             const logoW = (s.sizeRatio || 0.15) * short
             const logoH = (logoImg.naturalHeight / logoImg.naturalWidth) * logoW
-            ctx.drawImage(logoImg, -logoW / 2, -logoH / 2, logoW, logoH)
+            // 多级降采样 —— 见 src/lib/canvas.ts
+            drawImageCrisp(ctx, logoImg, -logoW / 2, -logoH / 2, logoW, logoH)
           } catch {}
         }
 

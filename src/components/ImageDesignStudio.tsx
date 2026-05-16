@@ -10,6 +10,7 @@ import { APP_VERSION } from '@/lib/version'
 import { OTHER_BRANDS, getBrandLogoUrl, getBrandLabel } from '@/lib/brands'
 import { downloadDataUrl } from '@/lib/download'
 import dynamic from 'next/dynamic'
+import { drawImageCrisp } from '@/lib/canvas'
 
 // Lazy-load StickerEditor — see comment in PreviewPanel.tsx for the why.
 const StickerEditor = dynamic(() => import('./StickerEditor'), { ssr: false })
@@ -719,7 +720,12 @@ export default function ImageDesignStudio() {
     const ctx = canvas.getContext('2d')!
     canvas.width = poster.naturalWidth
     canvas.height = poster.naturalHeight
+    // 高质量缩放 + 略高的 JPEG 质量，避免大尺寸 logo (3863×1022) 缩到画布上的
+    // 几百像素时出现锯齿、边缘模糊。详见 PreviewPanel.bakeAllLogos 的同步注释。
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(poster, 0, 0)
+    const hasOverlays = textOverlays.length > 0 || !!getLogo('bigoffs') || !!getLogo('partner')
     if (textOverlays.length > 0) drawTexts(ctx, canvas.width, canvas.height, textOverlays)
     for (const slot of ['bigoffs', 'partner'] as const) {
       const logo = getLogo(slot)
@@ -727,15 +733,26 @@ export default function ImageDesignStudio() {
       const logoImg = await loadImg(logo.srcUrl)
       const logoW = poster.naturalWidth * logo.scale
       const logoH = (logoImg.naturalHeight / logoImg.naturalWidth) * logoW
-      ctx.drawImage(logoImg, poster.naturalWidth * logo.pos.x - logoW / 2, poster.naturalHeight * logo.pos.y - logoH / 2, logoW, logoH)
+      // 多级降采样，避免一步 8.6× 缩放产生的 logo 像素感 —— 见 src/lib/canvas.ts
+      drawImageCrisp(ctx, logoImg, poster.naturalWidth * logo.pos.x - logoW / 2, poster.naturalHeight * logo.pos.y - logoH / 2, logoW, logoH)
     }
-    return canvas.toDataURL('image/jpeg', 0.92)
+    // 有 logo / 文字 overlay 时输出 PNG —— 无损保留边缘锐利度；纯海报（无叠加）继续走
+    // JPEG 0.95，文件更小。
+    return hasOverlays
+      ? canvas.toDataURL('image/png')
+      : canvas.toDataURL('image/jpeg', 0.95)
   }
 
   async function handleDownload() {
     if (!selectedImage) return
     const ts = Date.now()
-    const filename = stickerEditedUrl ? `ai-design-with-stickers-${ts}.png` : `ai-design-${ts}.jpg`
+    // 文件扩展名跟着 bakeOverlays 的输出格式走：有叠加层 → PNG，纯海报 → JPEG
+    const hasOverlays = textOverlays.length > 0 || !!bigoffsLogo || !!partnerLogo
+    const filename = stickerEditedUrl
+      ? `ai-design-with-stickers-${ts}.png`
+      : hasOverlays
+        ? `ai-design-${ts}.png`
+        : `ai-design-${ts}.jpg`
     const dataUrl = stickerEditedUrl ?? await bakeOverlays(selectedImage)
     await downloadDataUrl(dataUrl, filename)
     try {

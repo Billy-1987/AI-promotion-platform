@@ -9,6 +9,7 @@ import { OTHER_BRANDS, getBrandLogoUrl, getBrandLabel } from '@/lib/brands'
 import { downloadDataUrl } from '@/lib/download'
 import BackgroundSelector from './BackgroundSelector'
 import dynamic from 'next/dynamic'
+import { drawImageCrisp } from '@/lib/canvas'
 
 // Lazy-load StickerEditor — it's ~2200 lines and only needed once the user
 // clicks "添加素材". Keeping it out of the initial /tryon bundle shrinks the
@@ -120,13 +121,18 @@ export default function PreviewPanel({
   }
 
 
-  // Bake all active logo slots onto the base image, return dataURL
+  // Bake all active logo slots onto the base image, return dataURL.
+  // 关键：必须把 imageSmoothingQuality 设为 'high'，否则浏览器默认按 'low' 处理，
+  // 把 3863×1022 的原始 logo 缩到画布上的小尺寸时会产生明显锯齿；JPEG 0.92 → 0.95
+  // 在体积代价很小的情况下让 logo 边缘锐利度有可见提升。
   async function bakeAllLogos(baseUrl: string): Promise<string> {
     const base = await loadImage(baseUrl)
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     canvas.width = base.naturalWidth
     canvas.height = base.naturalHeight
+    ctx.imageSmoothingEnabled = true
+    ctx.imageSmoothingQuality = 'high'
     ctx.drawImage(base, 0, 0)
     for (const slot of ['bigoffs', 'partner'] as const) {
       const logo = getLogo(slot)
@@ -136,9 +142,13 @@ export default function PreviewPanel({
       const logoH = (logoImg.naturalHeight / logoImg.naturalWidth) * logoW
       const logoX = base.naturalWidth * logo.pos.x - logoW / 2
       const logoY = base.naturalHeight * logo.pos.y - logoH / 2
-      ctx.drawImage(logoImg, logoX, logoY, logoW, logoH)
+      // 多级降采样：把 3863-px 源 logo 缩到 ~450 px 时单次 8.6× 缩放会出现像素感，
+      // drawImageCrisp 内部分多步折半，最终步只走 < 2×，logo 边缘明显更锐利。
+      drawImageCrisp(ctx, logoImg, logoX, logoY, logoW, logoH)
     }
-    return canvas.toDataURL('image/jpeg', 0.92)
+    // 输出 PNG —— 无损保留 logo 边缘锐利度，避免 JPEG 量化在 logo/文字轮廓上引入像素感。
+    // 代价：文件体积约比 JPEG 0.95 大 2-3 倍。
+    return canvas.toDataURL('image/png')
   }
 
   async function loadIntoSlot(slot: LogoSlot, url: string, defaultPos: { x: number; y: number }, brandValue?: string) {
@@ -258,7 +268,8 @@ export default function PreviewPanel({
         setCompositing(false)
       }
       const tag = partnerLogo ? brandLabel.replace(/\s+/g, '-') : 'BigOffs'
-      filename = `${tag}-result.jpg`
+      // 带 logo 的合成图改走 PNG（见 bakeAllLogos 的注释），文件扩展名跟着改
+      filename = `${tag}-result.png`
     } else {
       src = resultUrl
       filename = 'result.jpg'
