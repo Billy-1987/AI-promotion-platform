@@ -8,7 +8,12 @@ import { saveToGallery, urlToDataUrl } from '@/lib/gallery'
 import { OTHER_BRANDS, getBrandLogoUrl, getBrandLabel } from '@/lib/brands'
 import { downloadDataUrl } from '@/lib/download'
 import BackgroundSelector from './BackgroundSelector'
-import StickerEditor from './StickerEditor'
+import dynamic from 'next/dynamic'
+
+// Lazy-load StickerEditor — it's ~2200 lines and only needed once the user
+// clicks "添加素材". Keeping it out of the initial /tryon bundle shrinks the
+// route's JS payload meaningfully, which matters on mobile.
+const StickerEditor = dynamic(() => import('./StickerEditor'), { ssr: false })
 
 interface Props {
   status: TryOnStatus

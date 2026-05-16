@@ -1,6 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useRef, useCallback } from 'react'
+import JSZip from 'jszip'
 import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
 import AuthGuard from '@/components/AuthGuard'
@@ -53,11 +55,13 @@ async function compositeWithLogo(
 function GalleryCard({
   item,
   selected,
+  saved,
   onToggle,
   onClick,
 }: {
   item: GalleryItem
   selected: boolean
+  saved: boolean
   onToggle: (id: string) => void
   onClick: (item: GalleryItem) => void
 }) {
@@ -91,12 +95,17 @@ function GalleryCard({
           {selected && <span className="text-white text-xs leading-none">✓</span>}
         </div>
       </button>
-      {/* 来源标签 */}
+      {/* 来源标签 + 已保存标记（已保存时叠在来源标签下方，绿色高亮）*/}
       <span className={`absolute top-2 right-2 text-xs px-1.5 py-0.5 rounded font-medium ${
         item.source === 'tryon' ? 'bg-blue-600 text-white' : item.source === 'image-design' ? 'bg-violet-600 text-white' : 'bg-emerald-600 text-white'
       }`}>
         {item.source === 'tryon' ? 'AI换装' : item.source === 'image-design' ? 'AI设计' : '模板'}
       </span>
+      {saved && (
+        <span className="absolute top-9 right-2 text-[10px] px-1.5 py-0.5 rounded font-medium bg-emerald-500 text-white shadow-sm flex items-center gap-0.5 leading-none">
+          <span className="text-[11px]">✓</span> 已保存
+        </span>
+      )}
       {/* 文件名 */}
       <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/70 to-transparent px-2 py-2">
         <p className="text-white text-xs truncate">{item.filename}</p>
@@ -331,6 +340,12 @@ function GalleryContent() {
   const [showBatchLogo, setShowBatchLogo] = useState(false)
   const [batchProcessing, setBatchProcessing] = useState(false)
   const [batchProgress, setBatchProgress] = useState({ done: 0, total: 0 })
+  // Batch-save state — separate from batchProcessing so 一键保存 and 批量加 Logo
+  // can each show their own progress without interfering. savedIds persists for
+  // the page's lifetime so the user can tell at a glance what's already exported.
+  const [batchSaving, setBatchSaving] = useState(false)
+  const [batchSaveProgress, setBatchSaveProgress] = useState({ done: 0, total: 0 })
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set())
 
   useEffect(() => { setItems(getGallery(user?.username)) }, [user?.username])
 
@@ -367,20 +382,111 @@ function GalleryContent() {
 
   function clearSelection() { setSelected(new Set()) }
 
-  // 批量保存（下载）
+  // 批量保存 — 混合方案：
+  //   1) 阶段 1：从 IndexedDB 把选中的图都拉成 File 对象（带进度条）
+  //   2) 阶段 2a：优先调用 navigator.share({ files })，让 iOS/Android 走原生分享面板
+  //                直接存到「相册/照片」，体验最佳
+  //   2b）如果浏览器不支持 Web Share API（典型场景：微信内置浏览器、桌面 Firefox），
+  //       自动降级为 JSZip 打包后一次性下载 gallery-YYYYMMDD.zip
+  //   2c）单张选择时跳过 ZIP，直接下载单文件
+  // 只有真正完成（share 成功 / zip 已触发下载）才把 ID 写进 savedIds —— 用户在分享面板按取消
+  // 不会留下「已保存」误标。
   async function handleBatchSave() {
     const targets = items.filter(i => selected.has(i.id))
+    if (targets.length === 0) return
+    setBatchSaving(true)
+    setBatchSaveProgress({ done: 0, total: targets.length })
+
+    // ── 阶段 1：dataURL → File[] ──
+    const usedNames = new Set<string>()
+    const files: File[] = []
     for (let idx = 0; idx < targets.length; idx++) {
       const item = targets[idx]
-      const dataUrl = await getGalleryItem(item.id)
-      if (!dataUrl) continue
-      await new Promise<void>(res => setTimeout(() => {
-        const a = document.createElement('a')
-        a.href = dataUrl
-        a.download = item.filename
-        a.click()
-        res()
-      }, idx * 300))
+      try {
+        const dataUrl = await getGalleryItem(item.id)
+        if (dataUrl) {
+          const blob = await (await fetch(dataUrl)).blob()
+          const mimeMatch = dataUrl.match(/^data:([^;]+);/)
+          const mime = mimeMatch?.[1] ?? blob.type ?? 'application/octet-stream'
+          // ZIP 内禁止重名；如已存在则补 -2 / -3 后缀
+          let name = item.filename
+          if (usedNames.has(name)) {
+            const dot = name.lastIndexOf('.')
+            const base = dot > 0 ? name.slice(0, dot) : name
+            const ext = dot > 0 ? name.slice(dot) : ''
+            let n = 2
+            while (usedNames.has(`${base}-${n}${ext}`)) n++
+            name = `${base}-${n}${ext}`
+          }
+          usedNames.add(name)
+          files.push(new File([blob], name, { type: mime }))
+        }
+      } catch (e) {
+        console.error('Build file failed for', item.id, e)
+      }
+      setBatchSaveProgress({ done: idx + 1, total: targets.length })
+    }
+
+    if (files.length === 0) {
+      setBatchSaving(false)
+      alert('未能加载任何图片，请重试')
+      return
+    }
+
+    // ── 阶段 2：优先 Web Share，否则 ZIP / 单文件下载 ──
+    const targetIds = targets.map(t => t.id)
+    const markAllSaved = () => setSavedIds(prev => {
+      const next = new Set(prev)
+      for (const id of targetIds) next.add(id)
+      return next
+    })
+
+    const nav = typeof navigator !== 'undefined' ? navigator : null
+    const canUseShare = !!(nav?.share && nav?.canShare && nav.canShare({ files }))
+
+    if (canUseShare) {
+      try {
+        await nav!.share({ files, title: '图库导出' })
+        markAllSaved()
+        setBatchSaving(false)
+        return
+      } catch (e) {
+        const errName = (e as Error)?.name
+        if (errName === 'AbortError') {
+          // 用户在分享面板里取消 —— 这是有意行为，不再走 ZIP 兜底
+          setBatchSaving(false)
+          return
+        }
+        // 其它错误（权限被禁、分享目标不支持 files 等）→ 落到 ZIP 兜底
+        console.warn('navigator.share failed, falling back to ZIP:', e)
+      }
+    }
+
+    try {
+      let blob: Blob
+      let filename: string
+      if (files.length === 1) {
+        // 只有一张时不打包，直接下载原文件
+        blob = files[0]
+        filename = files[0].name
+      } else {
+        const zip = new JSZip()
+        for (const f of files) zip.file(f.name, f)
+        blob = await zip.generateAsync({ type: 'blob' })
+        filename = `gallery-${new Date().toISOString().slice(0, 10)}.zip`
+      }
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = filename
+      a.click()
+      setTimeout(() => URL.revokeObjectURL(url), 5000)
+      markAllSaved()
+    } catch (e) {
+      console.error('ZIP / single-file download failed:', e)
+      alert('下载失败，请重试')
+    } finally {
+      setBatchSaving(false)
     }
   }
 
@@ -451,13 +557,13 @@ function GalleryContent() {
       {/* Nav */}
       <nav className="bigoffs-header border-b border-white/10 px-3 md:px-6 flex gap-1 flex-shrink-0 overflow-x-auto whitespace-nowrap">
         {NAV.map(item => (
-          <a key={item.label} href={item.href} className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
+          <Link key={item.label} href={item.href} prefetch className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
             item.active ? 'text-white' : 'border-transparent text-slate-400 hover:text-white hover:border-white/30'
           }`}
           style={item.active ? { borderBottomColor: '#fcea42', color: '#fcea42' } : {}}>
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
-          </a>
+          </Link>
         ))}
       </nav>
 
@@ -487,10 +593,11 @@ function GalleryContent() {
             <div className="flex-1 min-w-0 hidden sm:block" />
             <button
               onClick={handleBatchSave}
-              className="px-3 md:px-4 py-1.5 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0"
+              disabled={batchSaving}
+              className="px-3 md:px-4 py-1.5 text-white text-sm font-medium rounded-lg transition-colors whitespace-nowrap flex-shrink-0 disabled:opacity-50 disabled:cursor-not-allowed"
               style={{ background: '#0034cc' }}
             >
-              一键保存
+              {batchSaving ? `保存中 ${batchSaveProgress.done}/${batchSaveProgress.total}` : '一键保存'}
             </button>
             <button
               onClick={() => setShowBatchLogo(true)}
@@ -507,6 +614,22 @@ function GalleryContent() {
               删除
             </button>
             <button onClick={clearSelection} className="text-slate-500 hover:text-slate-700 text-sm px-2 whitespace-nowrap flex-shrink-0">取消</button>
+          </div>
+        )}
+
+        {/* 一键保存进度 */}
+        {batchSaving && (
+          <div className="mb-5 px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+            <span className="w-4 h-4 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin shrink-0" />
+            <span className="text-sm text-emerald-700 whitespace-nowrap">
+              正在保存... {batchSaveProgress.done} / {batchSaveProgress.total}
+            </span>
+            <div className="flex-1 h-1.5 bg-emerald-100 rounded-full overflow-hidden">
+              <div
+                className="h-full bg-emerald-500 rounded-full transition-all"
+                style={{ width: `${(batchSaveProgress.done / Math.max(1, batchSaveProgress.total)) * 100}%` }}
+              />
+            </div>
           </div>
         )}
 
@@ -533,9 +656,9 @@ function GalleryContent() {
             <p className="text-lg font-medium text-slate-600">图库还是空的</p>
             <p className="text-sm mt-2 text-slate-500">在 AI 换装、模板社区或 AI 图片设计下载图片后，会自动出现在这里</p>
             <div className="flex gap-3 mt-6">
-              <a href="/tryon" className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors" style={{ background: '#0034cc' }}>去 AI 换装</a>
-              <a href="/templates" className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors">去模板社区</a>
-              <a href="/image-design" className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors">去 AI 图片设计</a>
+              <Link href="/tryon" prefetch className="px-4 py-2 text-white text-sm font-medium rounded-lg transition-colors" style={{ background: '#0034cc' }}>去 AI 换装</Link>
+              <Link href="/templates" prefetch className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors">去模板社区</Link>
+              <Link href="/image-design" prefetch className="px-4 py-2 bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 text-sm font-medium rounded-lg transition-colors">去 AI 图片设计</Link>
             </div>
           </div>
         ) : (
@@ -545,6 +668,7 @@ function GalleryContent() {
                 key={item.id}
                 item={item}
                 selected={selected.has(item.id)}
+                saved={savedIds.has(item.id)}
                 onToggle={toggleSelect}
                 onClick={setPreview}
               />

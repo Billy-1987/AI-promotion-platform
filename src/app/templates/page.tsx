@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from '@/components/Logo'
@@ -746,9 +747,10 @@ function TemplatesContent() {
           { label: 'AI 图片设计', href: '/image-design', icon: '✨' },
           { label: '我的图库', href: '/gallery', icon: '🖼️' },
         ].map(item => (
-          <a
+          <Link
             key={item.label}
             href={item.href}
+            prefetch
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
               item.active
                 ? 'text-white'
@@ -758,7 +760,7 @@ function TemplatesContent() {
           >
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
-          </a>
+          </Link>
         ))}
       </nav>
 

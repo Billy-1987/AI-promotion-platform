@@ -31,6 +31,7 @@ export interface Sticker {
   hasBg?: boolean
   bgColor?: string
   curve?: number  // 0 or undefined = off; 0.05..0.4 = sagitta ratio
+  vertical?: boolean  // true = top-to-bottom stack (CJK 竖排); ignored when curve is active
   // Emoji
   char?: string
   // Shape
@@ -48,12 +49,17 @@ export interface Sticker {
   url?: string
 }
 
-// Font picker — Word-style selection. Names below are CSS font-family
-// references, not bundled font files: the browser asks the user's OS for
-// the named face and falls back through the stack if missing. No font
-// binaries are shipped, so trademark / licensing of the named faces is
-// not implicated. Existing IDs (calibri / yahei / pingfang / simsun /
-// times / impact) are preserved so saved templates keep working.
+// Font picker — every face here is a SIL Open Font License webfont served via
+// Google Fonts (see src/app/layout.tsx). SIL OFL permits commercial use of the
+// font binaries AND the rasterized output (PNGs exported from this editor),
+// so generated images are safe to ship in commercial deliverables.
+//
+// We deliberately do NOT reference proprietary OS faces (Microsoft YaHei /
+// Apple PingFang / Founder / Hanyi / STC / Microsoft Calibri / Monotype Arial
+// etc.) — even as fallbacks — because in mainland China rasterized output of
+// those families has triggered actual infringement claims. Final fallback is
+// always a generic CSS family (sans-serif / serif / monospace), which the
+// browser resolves to its own default and is also safe.
 type FontGroup = 'cjk' | 'sans' | 'serif' | 'mono' | 'display'
 export interface FontDef {
   id: string
@@ -63,42 +69,30 @@ export interface FontDef {
 }
 
 export const FONTS: FontDef[] = [
-  // 中文（CJK）— system Chinese faces on macOS / Windows / Linux
-  { id: 'pingfang', label: '苹方',        css: '"PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif', group: 'cjk' },
-  { id: 'yahei',    label: '微软雅黑',     css: '"Microsoft YaHei", "PingFang SC", "Source Han Sans SC", sans-serif', group: 'cjk' },
-  { id: 'heiti',    label: '黑体',        css: 'SimHei, "Heiti SC", "PingFang SC", "Microsoft YaHei", sans-serif', group: 'cjk' },
-  { id: 'simsun',   label: '宋体',        css: 'SimSun, "Songti SC", "Source Han Serif SC", serif', group: 'cjk' },
-  { id: 'kaiti',    label: '楷体',        css: 'KaiTi, "Kaiti SC", STKaiti, serif', group: 'cjk' },
-  { id: 'fangsong', label: '仿宋',        css: 'FangSong, STFangsong, serif', group: 'cjk' },
-  { id: 'xingkai',  label: '华文行楷',     css: '"STXingkai", "Xingkai SC", cursive', group: 'cjk' },
-  { id: 'hupo',     label: '华文琥珀',     css: '"STHupo", "Hupo", sans-serif', group: 'cjk' },
-  { id: 'lishu',    label: '隶书',        css: 'LiSu, STLiti, "Baoli SC", serif', group: 'cjk' },
-  { id: 'youyuan',  label: '幼圆',        css: 'YouYuan, "PingFang Rounded", "Yuanti SC", sans-serif', group: 'cjk' },
+  // 中文（CJK）— all SIL OFL
+  { id: 'noto-sans-sc',  label: '思源黑体',     css: '"Noto Sans SC", sans-serif',          group: 'cjk' },
+  { id: 'noto-serif-sc', label: '思源宋体',     css: '"Noto Serif SC", serif',              group: 'cjk' },
+  { id: 'zcool-xiaowei', label: '站酷小薇',     css: '"ZCOOL XiaoWei", serif',              group: 'cjk' },
+  { id: 'zcool-qingke',  label: '站酷庆科黄油',  css: '"ZCOOL QingKe HuangYou", cursive',    group: 'cjk' },
+  { id: 'mashan',        label: '马善政楷书',    css: '"Ma Shan Zheng", cursive',            group: 'cjk' },
+  { id: 'zhimang',       label: '志莽行书',     css: '"Zhi Mang Xing", cursive',            group: 'cjk' },
 
-  // Sans-Serif
-  { id: 'calibri',   label: 'Calibri',       css: 'Calibri, Candara, "Segoe UI", "PingFang SC", sans-serif', group: 'sans' },
-  { id: 'arial',     label: 'Arial',         css: 'Arial, Helvetica, "Liberation Sans", sans-serif', group: 'sans' },
-  { id: 'helvetica', label: 'Helvetica',     css: 'Helvetica, "Helvetica Neue", Arial, sans-serif', group: 'sans' },
-  { id: 'verdana',   label: 'Verdana',       css: 'Verdana, Geneva, "DejaVu Sans", sans-serif', group: 'sans' },
-  { id: 'tahoma',    label: 'Tahoma',        css: 'Tahoma, Geneva, "DejaVu Sans", sans-serif', group: 'sans' },
-  { id: 'trebuchet', label: 'Trebuchet MS',  css: '"Trebuchet MS", "Lucida Grande", Helvetica, sans-serif', group: 'sans' },
-  { id: 'segoe',     label: 'Segoe UI',      css: '"Segoe UI", "Helvetica Neue", Helvetica, sans-serif', group: 'sans' },
-  { id: 'comicsans', label: 'Comic Sans MS', css: '"Comic Sans MS", "Comic Sans", "Chalkboard SE", cursive', group: 'sans' },
+  // Sans-Serif — all SIL OFL or Apache 2.0
+  { id: 'inter',       label: 'Inter',       css: 'Inter, sans-serif',          group: 'sans' },
+  { id: 'roboto',      label: 'Roboto',      css: 'Roboto, sans-serif',         group: 'sans' },
+  { id: 'montserrat',  label: 'Montserrat',  css: 'Montserrat, sans-serif',     group: 'sans' },
 
-  // Serif
-  { id: 'times',    label: 'Times New Roman', css: '"Times New Roman", Times, "Liberation Serif", serif', group: 'serif' },
-  { id: 'georgia',  label: 'Georgia',         css: 'Georgia, "Times New Roman", serif', group: 'serif' },
-  { id: 'cambria',  label: 'Cambria',         css: 'Cambria, Georgia, "Liberation Serif", serif', group: 'serif' },
-  { id: 'garamond', label: 'Garamond',        css: 'Garamond, "EB Garamond", "Cormorant Garamond", serif', group: 'serif' },
-  { id: 'palatino', label: 'Palatino',        css: '"Palatino Linotype", "Book Antiqua", Palatino, "URW Palladio L", serif', group: 'serif' },
+  // Serif — all SIL OFL
+  { id: 'playfair',     label: 'Playfair Display', css: '"Playfair Display", serif', group: 'serif' },
+  { id: 'lora',         label: 'Lora',             css: 'Lora, serif',               group: 'serif' },
 
-  // Monospace
-  { id: 'courier',  label: 'Courier New',     css: '"Courier New", Courier, "Liberation Mono", monospace', group: 'mono' },
-  { id: 'consolas', label: 'Consolas',        css: 'Consolas, "Cascadia Mono", "Lucida Console", monospace', group: 'mono' },
+  // Monospace — all SIL OFL or Apache 2.0
+  { id: 'jetbrains',   label: 'JetBrains Mono',  css: '"JetBrains Mono", monospace', group: 'mono' },
 
-  // Display
-  { id: 'impact',     label: 'Impact',        css: 'Impact, "Arial Black", "Haettenschweiler", sans-serif', group: 'display' },
-  { id: 'arialblack', label: 'Arial Black',   css: '"Arial Black", "Arial Bold", Gadget, sans-serif', group: 'display' },
+  // Display — all SIL OFL
+  { id: 'oswald',     label: 'Oswald',     css: 'Oswald, sans-serif',         group: 'display' },
+  { id: 'bebas',      label: 'Bebas Neue', css: '"Bebas Neue", sans-serif',   group: 'display' },
+  { id: 'pacifico',   label: 'Pacifico',   css: 'Pacifico, cursive',          group: 'display' },
 ]
 
 const FONT_GROUP_LABELS: Record<FontGroup, string> = {
@@ -499,15 +493,25 @@ function getTextCss(s: Sticker, displayH: number): React.CSSProperties {
   const px = (s.sizeRatio || 0.06) * displayH
   const strokeW = Math.max(1.5, px * 0.07)
   const shadowOff = Math.max(2, px * 0.06)
+  // Use `pre` (not `pre-wrap`): with `pre-wrap` the browser breaks CJK strings
+  // at every glyph as soon as the absolutely-positioned wrapper bumps the canvas
+  // edge — making e.g. "上衣" suddenly stack vertically when the user just wanted
+  // to resize it. Explicit newlines from the textarea still render as line breaks.
   const css: React.CSSProperties = {
     fontFamily: FONTS.find(f => f.id === s.font)?.css || FONTS[0].css,
     fontSize: `${px}px`,
     fontWeight: s.bold ? 800 : 400,
     fontStyle: s.italic ? 'italic' : 'normal',
     color: s.color || '#ffffff',
-    whiteSpace: 'pre-wrap',
+    whiteSpace: 'pre',
     textAlign: s.align || 'center',
     lineHeight: 1.15,
+  }
+  // 竖排：CJK 上→下堆叠，Latin 字符也保持正立（textOrientation: upright）。
+  // curve 与 vertical 互斥 —— 曲线渲染走单独的 SVG 路径。
+  if (s.vertical && !(s.curve && s.curve > 0)) {
+    css.writingMode = 'vertical-rl'
+    ;(css as React.CSSProperties & { textOrientation?: string }).textOrientation = 'upright'
   }
   // underline / strike are rendered via nested spans in JSX so each can have
   // its own color; nothing to set here.
@@ -836,6 +840,7 @@ interface PanelText {
   hasBg: boolean
   bgColor: string
   curve: number
+  vertical: boolean
 }
 
 interface TextTemplate {
@@ -856,6 +861,7 @@ interface TextTemplate {
   hasBg: boolean
   bgColor: string
   curve: number
+  vertical: boolean
 }
 interface PanelShape {
   shape: string
@@ -889,7 +895,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
 
   const [panelText, setPanelText] = useState<PanelText>({
     content: '',
-    font: 'calibri',
+    font: 'inter',
     color: '#ffffff',
     bold: false,
     italic: false,
@@ -905,6 +911,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     hasBg: false,
     bgColor: DEFAULT_BG_COLOR,
     curve: 0,
+    vertical: false,
   })
   const [panelShape, setPanelShape] = useState<PanelShape>({
     shape: 'rect', wRatio: 0.28, hRatio: 0.22, fill: '#fceb42', stroke: '#fceb42', strokeWidthRatio: 0,
@@ -954,6 +961,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       hasBg: panelText.hasBg,
       bgColor: panelText.bgColor,
       curve: panelText.curve,
+      vertical: panelText.vertical,
     }
     persistTemplates([tpl, ...textTemplates].slice(0, 30))
   }
@@ -977,6 +985,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       hasBg: tpl.hasBg,
       bgColor: tpl.bgColor,
       curve: tpl.curve,
+      vertical: tpl.vertical ?? false,
     }))
     setCurveActive(tpl.curve > 0)
   }
@@ -1010,6 +1019,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
           hasBg: panelText.hasBg,
           bgColor: panelText.bgColor,
           curve: panelText.curve,
+          vertical: panelText.vertical,
         }
       }
       if (s.id === editingShapeId && s.type === 'shape') {
@@ -1131,6 +1141,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     hasBg: panelText.hasBg,
     bgColor: panelText.bgColor,
     curve: panelText.curve,
+    vertical: panelText.vertical,
     x: 0.5, y: 0.5, rotation: 0, flipH: false, flipV: false,
   })
 
@@ -1150,7 +1161,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     const curve = s.curve || 0
     setPanelText({
       content: s.text || '',
-      font: s.font || 'calibri',
+      font: s.font || 'inter',
       color: s.color || '#ffffff',
       bold: s.bold ?? false,
       italic: s.italic ?? false,
@@ -1166,6 +1177,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
       hasBg: s.hasBg ?? false,
       bgColor: s.bgColor || DEFAULT_BG_COLOR,
       curve,
+      vertical: s.vertical ?? false,
     })
     setCurveActive(curve > 0)
     setActiveTab('text')
@@ -1254,6 +1266,12 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     if (!baseImageUrl || exporting) return
     setExporting(true)
     try {
+      // Wait for webfonts to finish downloading — otherwise canvas may rasterize
+      // with a system fallback (e.g. PingFang on macOS) instead of the SIL OFL
+      // family we asked for, defeating the commercial-use compliance fix.
+      if (typeof document !== 'undefined' && document.fonts?.ready) {
+        try { await document.fonts.ready } catch {}
+      }
       const base = await loadImg(baseImageUrl)
       const canvas = canvasRef.current!
       const ctx = canvas.getContext('2d')!
@@ -1332,7 +1350,13 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               ang += charAng
             }
           } else {
-            const lines = (s.text || '').split('\n')
+            // 竖排：把每个字符拆成一行，复用既有逐行绘制逻辑，与 DOM `writing-mode: vertical-rl` 的视觉一致。
+            // 注：竖排时若文本中含 `\n`，这里会把它当作普通分隔忽略 —— 多列竖排留待后续按需扩展。
+            const isVertical = !!s.vertical
+            const rawLines = (s.text || '').split('\n')
+            const lines = isVertical
+              ? Array.from(rawLines.join('')).map(c => c || ' ')
+              : rawLines
             let maxW = 0
             for (const line of lines) {
               const w = ctx.measureText(line).width
@@ -1779,7 +1803,7 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
               </div>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[11px] text-zinc-500 w-10 flex-shrink-0">对齐</span>
               <div className="flex gap-1.5">
                 {([
@@ -1798,6 +1822,27 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
                       style={active ? { background: '#fceb42' } : {}}
                       aria-label={`align-${a.id}`}
                     >{a.icon}</button>
+                  )
+                })}
+              </div>
+              {/* 横/纵 排版切换 */}
+              <div className="flex gap-1.5 ml-2">
+                {([
+                  { vertical: false, label: '横', aria: '横排' },
+                  { vertical: true,  label: '纵', aria: '纵排' },
+                ] as const).map(o => {
+                  const active = !!panelText.vertical === o.vertical
+                  return (
+                    <button
+                      key={o.aria}
+                      onClick={() => setPanelText(p => ({ ...p, vertical: o.vertical }))}
+                      className={`w-9 h-8 rounded-md text-sm border transition-colors ${
+                        active ? 'border-yellow-400 text-zinc-900' : 'border-zinc-700 bg-zinc-800 text-zinc-300 hover:border-zinc-500'
+                      }`}
+                      style={active ? { background: '#fceb42' } : {}}
+                      aria-label={o.aria}
+                      title={o.aria}
+                    >{o.label}</button>
                   )
                 })}
               </div>

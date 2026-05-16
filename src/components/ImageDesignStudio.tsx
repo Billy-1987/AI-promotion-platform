@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useState, useEffect, useRef } from 'react'
 import { useAuth } from '@/lib/auth'
 import Logo from './Logo'
@@ -8,6 +9,10 @@ import { makeLogger, estimateJsonSize, formatBytes } from '@/lib/logger'
 import { APP_VERSION } from '@/lib/version'
 import { OTHER_BRANDS, getBrandLogoUrl, getBrandLabel } from '@/lib/brands'
 import { downloadDataUrl } from '@/lib/download'
+import dynamic from 'next/dynamic'
+
+// Lazy-load StickerEditor — see comment in PreviewPanel.tsx for the why.
+const StickerEditor = dynamic(() => import('./StickerEditor'), { ssr: false })
 
 const STYLE_OPTIONS = [
   { value: 'realistic', label: '写实' },
@@ -129,17 +134,16 @@ interface TextOverlay {
   locked?: boolean        // AI-generated texts are locked (no drag/delete)
 }
 
+// 仅使用免费可商用的 SIL OFL 字体（思源系列 + 站酷家族 + Google CJK 手写字体）。
+// 不再 primary-reference 任何 苹方 / 微软雅黑 / 华文 系列以规避商用授权风险；
+// rasterized 输出（导出的 PNG）可安全用于商业用途。
 const TEXT_FONTS = [
-  { value: '"PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif', label: '黑体',    preview: '永' },
-  { value: '"STKaiti", "KaiTi", "Noto Serif SC", serif',                   label: '楷体',    preview: '永' },
-  { value: '"STSong", "SimSun", "Noto Serif SC", serif',                   label: '宋体',    preview: '永' },
-  { value: '"Noto Sans SC", sans-serif',                                    label: '思源黑体', preview: '永' },
-  { value: '"Noto Serif SC", serif',                                        label: '思源宋体', preview: '永' },
-  { value: '"ZCOOL XiaoWei", serif',                                        label: '站酷小薇', preview: '永' },
-  { value: '"ZCOOL QingKe HuangYou", cursive',                              label: '站酷庆科', preview: '永' },
-  { value: '"Ma Shan Zheng", cursive',                                      label: '马善政楷', preview: '永' },
-  { value: '"Zhi Mang Xing", cursive',                                      label: '志莽行书', preview: '永' },
-  { value: '"Long Cang", cursive',                                          label: '龙藏体',  preview: '永' },
+  { value: '"Noto Sans SC", sans-serif',       label: '思源黑体',     preview: '永' },
+  { value: '"Noto Serif SC", serif',           label: '思源宋体',     preview: '永' },
+  { value: '"ZCOOL XiaoWei", serif',           label: '站酷小薇',     preview: '永' },
+  { value: '"ZCOOL QingKe HuangYou", cursive', label: '站酷庆科黄油',  preview: '永' },
+  { value: '"Ma Shan Zheng", cursive',         label: '马善政楷书',    preview: '永' },
+  { value: '"Zhi Mang Xing", cursive',         label: '志莽行书',     preview: '永' },
 ]
 const TEXT_COLORS = ['#ffffff', '#000000', '#FFD700', '#FF4444', '#00CFFF']
 const FONT_SIZES  = [0.03, 0.05, 0.07, 0.10]
@@ -261,6 +265,11 @@ export default function ImageDesignStudio() {
     const setter = slot === 'bigoffs' ? setBigoffsLogo : setPartnerLogo
     setter(prev => (prev ? { ...prev, ...patch } : prev))
   }
+
+  // Sticker editor state (mirrors tryon PreviewPanel)
+  const [showStickerEditor, setShowStickerEditor] = useState(false)
+  const [stickerEditedUrl, setStickerEditedUrl] = useState<string | null>(null)
+  const [stickerBaseUrl, setStickerBaseUrl] = useState<string | null>(null)
 
   // Text overlay state
   const [textOverlays, setTextOverlays] = useState<TextOverlay[]>([])
@@ -494,6 +503,8 @@ export default function ImageDesignStudio() {
     setBigoffsLogo(null)
     setPartnerLogo(null)
     setSelectedBrand('none')
+    setStickerEditedUrl(null)
+    setStickerBaseUrl(null)
     posterImgRef.current = null
   }, [selectedImage])
 
@@ -691,10 +702,18 @@ export default function ImageDesignStudio() {
   }
 
 
-  async function handleDownload() {
-    if (!selectedImage) return
-    const filename = `ai-design-${Date.now()}.jpg`
-    const poster = posterImgRef.current ?? await loadImg(selectedImage)
+  // Bake poster + active text overlays + active logos onto a single dataURL.
+  // Shared by handleDownload and openStickerEditor so the sticker editor's
+  // base image already contains the user's previous edits.
+  async function bakeOverlays(url: string): Promise<string> {
+    // Webfonts use display=swap — wait until they finish downloading so the
+    // exported PNG uses our SIL OFL families instead of a system fallback.
+    if (typeof document !== 'undefined' && document.fonts?.ready) {
+      try { await document.fonts.ready } catch {}
+    }
+    const poster = posterImgRef.current && posterImgRef.current.src === url
+      ? posterImgRef.current
+      : await loadImg(url)
     posterImgRef.current = poster
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
@@ -710,13 +729,40 @@ export default function ImageDesignStudio() {
       const logoH = (logoImg.naturalHeight / logoImg.naturalWidth) * logoW
       ctx.drawImage(logoImg, poster.naturalWidth * logo.pos.x - logoW / 2, poster.naturalHeight * logo.pos.y - logoH / 2, logoW, logoH)
     }
-    const dataUrl = canvas.toDataURL('image/jpeg', 0.92)
+    return canvas.toDataURL('image/jpeg', 0.92)
+  }
+
+  async function handleDownload() {
+    if (!selectedImage) return
+    const ts = Date.now()
+    const filename = stickerEditedUrl ? `ai-design-with-stickers-${ts}.png` : `ai-design-${ts}.jpg`
+    const dataUrl = stickerEditedUrl ?? await bakeOverlays(selectedImage)
     await downloadDataUrl(dataUrl, filename)
     try {
       await saveToGallery({ dataUrl, filename, source: 'image-design' }, user?.username)
     } catch (e) {
       console.error('Gallery save failed', e)
     }
+  }
+
+  async function openStickerEditor() {
+    if (!selectedImage) return
+    const hasOverlays = !!(bigoffsLogo || partnerLogo || textOverlays.length > 0)
+    if (hasOverlays && !stickerEditedUrl) {
+      setCompositing(true)
+      try {
+        const baked = await bakeOverlays(selectedImage)
+        setStickerBaseUrl(baked)
+      } catch (e) {
+        console.error('bake before sticker editor failed', e)
+        setStickerBaseUrl(stickerEditedUrl || selectedImage)
+      } finally {
+        setCompositing(false)
+      }
+    } else {
+      setStickerBaseUrl(stickerEditedUrl || selectedImage)
+    }
+    setShowStickerEditor(true)
   }
 
   return (
@@ -763,9 +809,10 @@ export default function ImageDesignStudio() {
           { label: 'AI 图片设计', href: '/image-design', icon: '✨', active: true },
           { label: '我的图库', href: '/gallery', icon: '🖼️' },
         ].map(item => (
-          <a
+          <Link
             key={item.label}
             href={item.href}
+            prefetch
             className={`flex items-center gap-1.5 px-4 py-3 text-sm font-medium border-b-2 transition-all ${
               item.active
                 ? 'text-white'
@@ -775,7 +822,7 @@ export default function ImageDesignStudio() {
           >
             <span className="text-base leading-none">{item.icon}</span>
             {item.label}
-          </a>
+          </Link>
         ))}
       </nav>
 
@@ -1020,9 +1067,9 @@ export default function ImageDesignStudio() {
                 })()}
                 onClick={() => { setSelectedTextIdx(null); setInlineEditIdx(null) }}
               >
-                {/* 点击图片本体进入详情 */}
+                {/* 点击图片本体进入详情 — 若已应用素材编辑结果，则展示烘焙后的版本 */}
                 <img
-                  src={selectedImage}
+                  src={stickerEditedUrl ?? selectedImage}
                   alt="Generated"
                   className="w-full h-full object-contain rounded-xl cursor-pointer"
                   draggable={false}
@@ -1030,7 +1077,7 @@ export default function ImageDesignStudio() {
                 />
 
                 {/* 文字 HTML overlay — 始终显示，canvas 只用于下载合成 */}
-                {(() => {
+                {!stickerEditedUrl && (() => {
                   const allTexts = [
                     ...textOverlays.map((t, i) => ({ t, i, isPreview: false })),
                     ...(showTextEditor && editingText.content
@@ -1134,7 +1181,7 @@ export default function ImageDesignStudio() {
                 })()}
 
                 {/* Logo 拖动辅助线 */}
-                {dragging && (() => {
+                {!stickerEditedUrl && dragging && (() => {
                   const logo = getLogo(dragging)
                   if (!logo) return null
                   return (
@@ -1148,7 +1195,7 @@ export default function ImageDesignStudio() {
                 })()}
 
                 {/* Logo overlays — render one per active slot (bigoffs / partner) */}
-                {(['bigoffs', 'partner'] as const).map(slot => {
+                {!stickerEditedUrl && (['bigoffs', 'partner'] as const).map(slot => {
                   const logo = getLogo(slot)
                   if (!logo) return null
                   return (
@@ -1218,7 +1265,7 @@ export default function ImageDesignStudio() {
                   )
                 })}
 
-                {(bigoffsLogo || partnerLogo) && (
+                {!stickerEditedUrl && (bigoffsLogo || partnerLogo) && (
                   <span className="absolute top-3 left-1/2 -translate-x-1/2 bg-emerald-600 text-white text-xs px-2 py-0.5 rounded-full font-medium pointer-events-none">
                     {dragging ? '拖动中...' : '拖动定位 · 拖黄色角缩放 · 点 ✕ 移除'}
                   </span>
@@ -1296,9 +1343,18 @@ export default function ImageDesignStudio() {
                   <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                     <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                   </svg>
-                  下载图片
+                  {stickerEditedUrl ? '下载（含素材）' : '下载图片'}
                 </button>
               </div>
+
+              {/* 添加素材 — 与 AI 换装一致的入口 */}
+              <button
+                onClick={openStickerEditor}
+                disabled={!selectedImage || compositing}
+                className="w-full py-2 bg-amber-500 hover:bg-amber-400 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                ✨ 添加素材
+              </button>
             </div>
           )}
 
@@ -1359,6 +1415,19 @@ export default function ImageDesignStudio() {
           )}
         </div>
       </main>
+
+      {/* 素材编辑器 — 与 AI 换装共用同一个组件 */}
+      {showStickerEditor && (
+        <StickerEditor
+          baseImageUrl={stickerBaseUrl}
+          onClose={() => setShowStickerEditor(false)}
+          onExport={async (dataUrl) => {
+            setStickerEditedUrl(dataUrl)
+            setShowStickerEditor(false)
+            await downloadDataUrl(dataUrl, `ai-design-with-stickers-${Date.now()}.png`)
+          }}
+        />
+      )}
 
       {/* Detail modal */}
       {detailImage && (
