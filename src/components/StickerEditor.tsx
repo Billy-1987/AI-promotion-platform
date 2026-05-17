@@ -69,31 +69,37 @@ export interface FontDef {
   group: FontGroup
 }
 
+// 每个 font stack 都把 Noto Sans SC 作为兜底字形回退 —— ZCOOL / Ma Shan Zheng /
+// Zhi Mang Xing 这些 CJK 装饰/手写字体只覆盖汉字 + 基础拉丁，没有 ¥ / ¥ / € / £ /
+// 部分箭头方框等符号。canvas 在缺字形时对 `serif` / `cursive` 这类泛家族回退不稳
+// 定（有时直接画空白），所以显式塞一个含完整 Unicode 覆盖的 OFL 字体（Noto Sans
+// SC 已在 layout.tsx 加载）作为中间层。Latin 字体也加上 Noto Sans SC，让用户在
+// Inter / Roboto 等里混排中文时也有保底。
 export const FONTS: FontDef[] = [
   // 中文（CJK）— all SIL OFL
-  { id: 'noto-sans-sc',  label: '思源黑体',     css: '"Noto Sans SC", sans-serif',          group: 'cjk' },
-  { id: 'noto-serif-sc', label: '思源宋体',     css: '"Noto Serif SC", serif',              group: 'cjk' },
-  { id: 'zcool-xiaowei', label: '站酷小薇',     css: '"ZCOOL XiaoWei", serif',              group: 'cjk' },
-  { id: 'zcool-qingke',  label: '站酷庆科黄油',  css: '"ZCOOL QingKe HuangYou", cursive',    group: 'cjk' },
-  { id: 'mashan',        label: '马善政楷书',    css: '"Ma Shan Zheng", cursive',            group: 'cjk' },
-  { id: 'zhimang',       label: '志莽行书',     css: '"Zhi Mang Xing", cursive',            group: 'cjk' },
+  { id: 'noto-sans-sc',  label: '思源黑体',     css: '"Noto Sans SC", sans-serif',                                       group: 'cjk' },
+  { id: 'noto-serif-sc', label: '思源宋体',     css: '"Noto Serif SC", "Noto Sans SC", serif',                           group: 'cjk' },
+  { id: 'zcool-xiaowei', label: '站酷小薇',     css: '"ZCOOL XiaoWei", "Noto Sans SC", serif',                           group: 'cjk' },
+  { id: 'zcool-qingke',  label: '站酷庆科黄油',  css: '"ZCOOL QingKe HuangYou", "Noto Sans SC", cursive',                 group: 'cjk' },
+  { id: 'mashan',        label: '马善政楷书',    css: '"Ma Shan Zheng", "Noto Sans SC", cursive',                         group: 'cjk' },
+  { id: 'zhimang',       label: '志莽行书',     css: '"Zhi Mang Xing", "Noto Sans SC", cursive',                         group: 'cjk' },
 
   // Sans-Serif — all SIL OFL or Apache 2.0
-  { id: 'inter',       label: 'Inter',       css: 'Inter, sans-serif',          group: 'sans' },
-  { id: 'roboto',      label: 'Roboto',      css: 'Roboto, sans-serif',         group: 'sans' },
-  { id: 'montserrat',  label: 'Montserrat',  css: 'Montserrat, sans-serif',     group: 'sans' },
+  { id: 'inter',       label: 'Inter',       css: 'Inter, "Noto Sans SC", sans-serif',                                   group: 'sans' },
+  { id: 'roboto',      label: 'Roboto',      css: 'Roboto, "Noto Sans SC", sans-serif',                                  group: 'sans' },
+  { id: 'montserrat',  label: 'Montserrat',  css: 'Montserrat, "Noto Sans SC", sans-serif',                              group: 'sans' },
 
   // Serif — all SIL OFL
-  { id: 'playfair',     label: 'Playfair Display', css: '"Playfair Display", serif', group: 'serif' },
-  { id: 'lora',         label: 'Lora',             css: 'Lora, serif',               group: 'serif' },
+  { id: 'playfair',     label: 'Playfair Display', css: '"Playfair Display", "Noto Serif SC", serif',                    group: 'serif' },
+  { id: 'lora',         label: 'Lora',             css: 'Lora, "Noto Serif SC", serif',                                  group: 'serif' },
 
   // Monospace — all SIL OFL or Apache 2.0
-  { id: 'jetbrains',   label: 'JetBrains Mono',  css: '"JetBrains Mono", monospace', group: 'mono' },
+  { id: 'jetbrains',   label: 'JetBrains Mono',  css: '"JetBrains Mono", "Noto Sans SC", monospace',                     group: 'mono' },
 
   // Display — all SIL OFL
-  { id: 'oswald',     label: 'Oswald',     css: 'Oswald, sans-serif',         group: 'display' },
-  { id: 'bebas',      label: 'Bebas Neue', css: '"Bebas Neue", sans-serif',   group: 'display' },
-  { id: 'pacifico',   label: 'Pacifico',   css: 'Pacifico, cursive',          group: 'display' },
+  { id: 'oswald',     label: 'Oswald',     css: 'Oswald, "Noto Sans SC", sans-serif',                                    group: 'display' },
+  { id: 'bebas',      label: 'Bebas Neue', css: '"Bebas Neue", "Noto Sans SC", sans-serif',                              group: 'display' },
+  { id: 'pacifico',   label: 'Pacifico',   css: 'Pacifico, "Noto Sans SC", cursive',                                     group: 'display' },
 ]
 
 const FONT_GROUP_LABELS: Record<FontGroup, string> = {
@@ -1267,11 +1273,33 @@ export default function StickerEditor({ baseImageUrl, onClose, onExport }: Props
     if (!baseImageUrl || exporting) return
     setExporting(true)
     try {
-      // Wait for webfonts to finish downloading — otherwise canvas may rasterize
-      // with a system fallback (e.g. PingFang on macOS) instead of the SIL OFL
-      // family we asked for, defeating the commercial-use compliance fix.
+      // 1) Wait for already-requested webfonts. 不够 —— Google Fonts 把 Noto Sans SC
+      //    拆成几十个 Unicode-range subset，浏览器只在页面渲染过那段字符时才请求该
+      //    subset。如果用户输入 ¥/€/£ 等符号而页面之前从未渲染过这些字符，对应 subset
+      //    永远不会被下载，document.fonts.ready 拿到的也是不含 ¥ 的 partial。
       if (typeof document !== 'undefined' && document.fonts?.ready) {
         try { await document.fonts.ready } catch {}
+      }
+      // 2) 对每个文字贴纸，按其字体级联里的每个 font-family 显式调用 document.fonts.load()
+      //    传入该贴纸的实际文本 —— 让浏览器把渲染这段文本所需的所有 subset 都拉下来。
+      //    这一步是 ¥ / € / 罕用符号能正确出现在导出图里的关键。
+      if (typeof document !== 'undefined' && (document.fonts as FontFaceSet | undefined)?.load) {
+        const loadJobs: Promise<unknown>[] = []
+        for (const s of displayedStickers) {
+          if (s.type !== 'text' || !s.text) continue
+          const f = FONTS.find(ff => ff.id === s.font) || FONTS[0]
+          const px = Math.max(8, Math.round((s.sizeRatio || 0.06) * 1000))
+          // f.css 形如 '"ZCOOL XiaoWei", "Noto Sans SC", serif' —— 取出每个带引号的家族
+          const families = (f.css.match(/"[^"]+"|[A-Za-z][A-Za-z0-9 -]*/g) || [])
+            .map(x => x.replace(/^"|"$/g, ''))
+            .filter(x => !['serif', 'sans-serif', 'cursive', 'monospace', 'fantasy'].includes(x))
+          for (const family of families) {
+            loadJobs.push(
+              document.fonts.load(`${px}px "${family}"`, s.text).catch(() => {})
+            )
+          }
+        }
+        if (loadJobs.length > 0) await Promise.all(loadJobs)
       }
       const base = await loadImg(baseImageUrl)
       const canvas = canvasRef.current!

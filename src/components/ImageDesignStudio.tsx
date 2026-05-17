@@ -138,13 +138,16 @@ interface TextOverlay {
 // 仅使用免费可商用的 SIL OFL 字体（思源系列 + 站酷家族 + Google CJK 手写字体）。
 // 不再 primary-reference 任何 苹方 / 微软雅黑 / 华文 系列以规避商用授权风险；
 // rasterized 输出（导出的 PNG）可安全用于商业用途。
+// 每个 fallback 链都把 Noto Sans SC 显式塞进来作为字形兜底 —— ZCOOL / Ma Shan
+// Zheng / Zhi Mang Xing 这些装饰/手写字体没有 ¥ / ¥ / € / £ 等符号，仅靠 serif /
+// cursive 泛家族在 canvas 上的回退不稳定。详见 StickerEditor.tsx 同源注释。
 const TEXT_FONTS = [
-  { value: '"Noto Sans SC", sans-serif',       label: '思源黑体',     preview: '永' },
-  { value: '"Noto Serif SC", serif',           label: '思源宋体',     preview: '永' },
-  { value: '"ZCOOL XiaoWei", serif',           label: '站酷小薇',     preview: '永' },
-  { value: '"ZCOOL QingKe HuangYou", cursive', label: '站酷庆科黄油',  preview: '永' },
-  { value: '"Ma Shan Zheng", cursive',         label: '马善政楷书',    preview: '永' },
-  { value: '"Zhi Mang Xing", cursive',         label: '志莽行书',     preview: '永' },
+  { value: '"Noto Sans SC", sans-serif',                                  label: '思源黑体',     preview: '永' },
+  { value: '"Noto Serif SC", "Noto Sans SC", serif',                      label: '思源宋体',     preview: '永' },
+  { value: '"ZCOOL XiaoWei", "Noto Sans SC", serif',                      label: '站酷小薇',     preview: '永' },
+  { value: '"ZCOOL QingKe HuangYou", "Noto Sans SC", cursive',            label: '站酷庆科黄油',  preview: '永' },
+  { value: '"Ma Shan Zheng", "Noto Sans SC", cursive',                    label: '马善政楷书',    preview: '永' },
+  { value: '"Zhi Mang Xing", "Noto Sans SC", cursive',                    label: '志莽行书',     preview: '永' },
 ]
 const TEXT_COLORS = ['#ffffff', '#000000', '#FFD700', '#FF4444', '#00CFFF']
 const FONT_SIZES  = [0.03, 0.05, 0.07, 0.10]
@@ -711,6 +714,24 @@ export default function ImageDesignStudio() {
     // exported PNG uses our SIL OFL families instead of a system fallback.
     if (typeof document !== 'undefined' && document.fonts?.ready) {
       try { await document.fonts.ready } catch {}
+    }
+    // 显式按文字内容预加载所有 fallback 字体的 Unicode subset —— Google Fonts 的
+    // Noto Sans SC 按 Unicode-range 拆成几十个 @font-face，浏览器只在页面渲染过对应
+    // 字符时才请求该 subset。如果用户在文字 overlay 里输入 ¥/€/£ 等罕见符号而页面
+    // 之前没渲染过，canvas fillText 会直接画空白。详见 StickerEditor.exportImage 注释。
+    if (typeof document !== 'undefined' && (document.fonts as FontFaceSet | undefined)?.load && textOverlays.length > 0) {
+      const loadJobs: Promise<unknown>[] = []
+      for (const t of textOverlays) {
+        if (!t.content) continue
+        const px = Math.max(8, Math.round(t.fontSize * 1000))
+        const families = (t.fontFamily.match(/"[^"]+"|[A-Za-z][A-Za-z0-9 -]*/g) || [])
+          .map(x => x.replace(/^"|"$/g, ''))
+          .filter(x => !['serif', 'sans-serif', 'cursive', 'monospace', 'fantasy'].includes(x))
+        for (const family of families) {
+          loadJobs.push(document.fonts.load(`${px}px "${family}"`, t.content).catch(() => {}))
+        }
+      }
+      if (loadJobs.length > 0) await Promise.all(loadJobs)
     }
     const poster = posterImgRef.current && posterImgRef.current.src === url
       ? posterImgRef.current
