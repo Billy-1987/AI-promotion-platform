@@ -15,6 +15,10 @@ public/generated/
 .env.local
 .env*.local
 
+# bigoffs-deploy: per-project deploy key (ephemeral, never commit)
+deploy_key
+deploy_key.pub
+
 # misc
 .DS_Store
 *.pem
